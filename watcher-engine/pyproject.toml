@@ -1,0 +1,13 @@
+[project]
+name = "watcher-engine"
+version = "0.1.0"
+description = "한국투자증권 API를 활용한 주식 거래 모니터링 엔진"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "python-dotenv>=1.2.1",
+    "requests>=2.32.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "pytest>=8.2.0",
+]
