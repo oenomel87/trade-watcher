@@ -52,6 +52,12 @@ class WatchlistItemSummary(BaseModel):
     change: str | None = None
     change_rate: str | None = None
     price_source: str | None = None
+    # NXT fields
+    nxt_current_price: str | None = None
+    nxt_volume: str | None = None
+    nxt_change: str | None = None
+    nxt_change_rate: str | None = None
+    nxt_price_source: str | None = None
 
     model_config = ConfigDict(extra="ignore")
 
@@ -135,3 +141,29 @@ class CurrentPriceResponse(BaseModel):
     updated_at: str | None = None
 
     model_config = ConfigDict(extra="ignore")
+
+
+class CombinedPriceDetail(BaseModel):
+    price: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class BestPrice(BaseModel):
+    exchange: str | None = None
+    price: int | None = None
+    source: dict[str, Any] | None = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class CombinedPriceResponse(BaseModel):
+    code: str
+    krx: CombinedPriceDetail
+    nxt: CombinedPriceDetail
+    best: BestPrice
+    active_exchanges: list[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="ignore")
+

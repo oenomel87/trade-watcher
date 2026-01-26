@@ -101,6 +101,18 @@ class KISClient(BaseAPIClient):
             extra_headers=extra_headers,
         )
 
+    def get_nxt_current_price(
+        self,
+        stock_code: str,
+        custtype: str = "P",
+    ) -> dict[str, Any]:
+        """NXT 거래소 현재가 조회."""
+        return self.get_current_price(
+            stock_code=stock_code,
+            market="NX",
+            custtype=custtype,
+        )
+
     def get_periodic_prices(
         self,
         stock_code: str,

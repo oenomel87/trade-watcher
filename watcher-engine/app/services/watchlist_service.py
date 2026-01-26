@@ -296,7 +296,19 @@ class WatchListService:
         max_age_sec: int | None = None,
         refresh_missing: bool = False,
         market: str = "J",
+        include_nxt: bool = False,
     ) -> list[dict]:
+        """종목 목록과 현재가 조회.
+
+        Args:
+            watchlist_id: watch list ID
+            folder_id: 폴더 ID (선택, None이면 전체)
+            use_cache: 캐시 사용 여부
+            max_age_sec: 캐시 최대 유효 시간(초)
+            refresh_missing: 캐시 없을 때 API 호출 여부
+            market: 시장 구분 (J/NX)
+            include_nxt: NXT 시세 추가 포함 여부
+        """
         items = self.list_items(watchlist_id, folder_id)
         price_service = StockCurrentPriceService(db=self.db)
 
@@ -304,6 +316,8 @@ class WatchListService:
         for item in items:
             price_payload = {}
             source = None
+            nxt_price_payload = {}
+            nxt_source = None
 
             if use_cache:
                 cached = self.db.get_current_price(item["stock_code"], market)
@@ -325,16 +339,53 @@ class WatchListService:
                 price_payload = live.get("price", {}) if isinstance(live, dict) else {}
                 source = live.get("source") if isinstance(live, dict) else "kis"
 
-            results.append(
-                {
-                    **item,
-                    "price_source": source,
-                    "current_price": price_payload.get("stck_prpr"),
-                    "volume": price_payload.get("acml_vol"),
-                    "change": price_payload.get("prdy_vrss"),
-                    "change_rate": price_payload.get("prdy_ctrt"),
-                }
-            )
+            # NXT 시세 추가 조회
+            if include_nxt:
+                if use_cache:
+                    nxt_cached = self.db.get_current_price(item["stock_code"], "NX")
+                    if nxt_cached:
+                        nxt_price_payload = price_service._parse_price_json(
+                            nxt_cached.get("price_json")
+                        )
+                        if nxt_price_payload and price_service._is_cache_valid(
+                            nxt_cached.get("updated_at"), max_age_sec
+                        ):
+                            nxt_source = "db"
+                        else:
+                            nxt_price_payload = {}
+
+                if refresh_missing and not nxt_price_payload:
+                    try:
+                        nxt_live = price_service.get_current_price(
+                            stock_code=item["stock_code"],
+                            market="NX",
+                            use_cache=False,
+                        )
+                        nxt_price_payload = (
+                            nxt_live.get("price", {}) if isinstance(nxt_live, dict) else {}
+                        )
+                        nxt_source = nxt_live.get("source") if isinstance(nxt_live, dict) else "kis"
+                    except Exception:
+                        nxt_price_payload = {}
+                        nxt_source = "error"
+
+            result_item = {
+                **item,
+                "price_source": source,
+                "current_price": price_payload.get("stck_prpr"),
+                "volume": price_payload.get("acml_vol"),
+                "change": price_payload.get("prdy_vrss"),
+                "change_rate": price_payload.get("prdy_ctrt"),
+            }
+
+            if include_nxt:
+                result_item["nxt_price_source"] = nxt_source
+                result_item["nxt_current_price"] = nxt_price_payload.get("stck_prpr")
+                result_item["nxt_volume"] = nxt_price_payload.get("acml_vol")
+                result_item["nxt_change"] = nxt_price_payload.get("prdy_vrss")
+                result_item["nxt_change_rate"] = nxt_price_payload.get("prdy_ctrt")
+
+            results.append(result_item)
 
         return results
 

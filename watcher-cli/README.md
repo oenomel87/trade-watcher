@@ -40,6 +40,10 @@ uv run python main.py watchlists --search 관심
 # 종목 검색
 uv run python main.py stocks --query 삼성
 
+# KRX/NXT 통합 시세 조회
+uv run python main.py prices 005930
+uv run python main.py prices 005930 -w --interval 2
+
 # 관심목록 생성/삭제
 uv run python main.py watchlists create --name "장기투자" --description "장기 보유"
 uv run python main.py watchlists delete --watchlist "장기투자"
@@ -52,6 +56,9 @@ uv run python main.py items --watchlist "장기투자"
 
 # 실시간 갱신 (-w)
 uv run python main.py items --watchlist 1 -w --interval 2
+
+# NXT 시세 함께 조회 (--include-nxt)
+uv run python main.py items --watchlist 1 --include-nxt
 
 # 종목 추가/삭제
 uv run python main.py items add --watchlist 1 --stock-code 005930 --memo "삼성전자"

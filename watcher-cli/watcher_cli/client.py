@@ -17,6 +17,7 @@ from watcher_cli.models import (
     WatchlistFolder,
     WatchlistItemCreateResult,
     WatchlistItemSummary,
+    CombinedPriceResponse,
 )
 
 
@@ -132,11 +133,13 @@ class EngineClient:
         max_age_sec: int | None = None,
         refresh_missing: bool = False,
         market: str = "J",
+        include_nxt: bool = False,
     ) -> list[WatchlistItemSummary]:
         params: dict[str, Any] = {
             "use_cache": use_cache,
             "market": market,
             "refresh_missing": refresh_missing,
+            "include_nxt": include_nxt,
         }
         if folder_id is not None:
             params["folder_id"] = folder_id
@@ -220,6 +223,19 @@ class EngineClient:
 
         payload = await self._request("GET", f"/stocks/{code}/prices/current", params=params)
         return CurrentPriceResponse.model_validate(payload)
+
+    async def get_combined_price(
+        self,
+        code: str,
+        use_cache: bool = False,
+        max_age_sec: int | None = None,
+    ) -> CombinedPriceResponse:
+        params: dict[str, Any] = {"use_cache": use_cache}
+        if max_age_sec is not None:
+            params["max_age_sec"] = max_age_sec
+
+        payload = await self._request("GET", f"/stocks/{code}/prices/combined", params=params)
+        return CombinedPriceResponse.model_validate(payload)
 
     async def _request(
         self,

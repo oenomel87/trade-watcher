@@ -164,3 +164,131 @@ class StockCurrentPriceService:
             return False
 
         return datetime.now() - parsed <= timedelta(seconds=max_age_sec)
+
+    def get_combined_price(
+        self,
+        stock_code: str,
+        use_cache: bool = False,
+        max_age_sec: int | None = None,
+    ) -> dict:
+        """KRX와 NXT 시세를 모두 조회하여 통합 결과 반환.
+
+        Args:
+            stock_code: 종목코드
+            use_cache: 캐시 사용 여부
+            max_age_sec: 캐시 최대 유효 시간(초)
+
+        Returns:
+            dict: KRX/NXT 각각의 시세와 최적 가격 정보
+        """
+        krx_price = None
+        nxt_price = None
+        krx_error = None
+        nxt_error = None
+
+        try:
+            krx_result = self.get_current_price(
+                stock_code=stock_code,
+                market="J",
+                use_cache=use_cache,
+                max_age_sec=max_age_sec,
+            )
+            krx_price = krx_result.get("price", {})
+        except Exception as e:
+            krx_error = str(e)
+
+        try:
+            nxt_result = self.get_current_price(
+                stock_code=stock_code,
+                market="NX",
+                use_cache=use_cache,
+                max_age_sec=max_age_sec,
+            )
+            nxt_price = nxt_result.get("price", {})
+        except Exception as e:
+            nxt_error = str(e)
+
+        best_price = self._select_best_price(krx_price, nxt_price)
+
+        return {
+            "code": stock_code,
+            "krx": {"price": krx_price, "error": krx_error},
+            "nxt": {"price": nxt_price, "error": nxt_error},
+            "best": best_price,
+            "active_exchanges": self.get_active_exchanges(),
+        }
+
+    def _select_best_price(
+        self,
+        krx_price: dict | None,
+        nxt_price: dict | None,
+    ) -> dict:
+        """KRX와 NXT 중 최적 가격 선택.
+
+        최신 거래 데이터가 있는 거래소 우선,
+        동일 조건이면 거래량이 많은 거래소 선택.
+        """
+        krx_current = self._safe_int(krx_price.get("stck_prpr") if krx_price else None)
+        nxt_current = self._safe_int(nxt_price.get("stck_prpr") if nxt_price else None)
+
+        if krx_current and not nxt_current:
+            return {"exchange": "KRX", "price": krx_current, "source": krx_price}
+        if nxt_current and not krx_current:
+            return {"exchange": "NXT", "price": nxt_current, "source": nxt_price}
+        if not krx_current and not nxt_current:
+            return {"exchange": None, "price": None, "source": None}
+
+        # 둘 다 있으면 거래량 기준 선택
+        krx_vol = self._safe_int(krx_price.get("acml_vol") if krx_price else None) or 0
+        nxt_vol = self._safe_int(nxt_price.get("acml_vol") if nxt_price else None) or 0
+
+        if nxt_vol > krx_vol:
+            return {"exchange": "NXT", "price": nxt_current, "source": nxt_price}
+        return {"exchange": "KRX", "price": krx_current, "source": krx_price}
+
+    @staticmethod
+    def _safe_int(value: str | int | None) -> int | None:
+        """문자열을 안전하게 정수로 변환."""
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return None
+
+    def get_active_exchanges(self, current_time: datetime | None = None) -> list[str]:
+        """현재 시간에 활성화된 거래소 목록 반환.
+
+        장전(08:00-08:50): NXT만
+        정규장(09:00-15:20): KRX + NXT
+        KRX 장마감(15:20-15:30): KRX만
+        장후(15:40-20:00): NXT만
+        그 외: 빈 리스트
+        """
+        if current_time is None:
+            current_time = datetime.now()
+
+        hour = current_time.hour
+        minute = current_time.minute
+        time_val = hour * 60 + minute
+
+        # 시간대 상수 (분 단위)
+        NXT_PRE_START = 8 * 60  # 08:00
+        NXT_PRE_END = 8 * 60 + 50  # 08:50
+        REGULAR_START = 9 * 60  # 09:00
+        NXT_REGULAR_END = 15 * 60 + 20  # 15:20
+        KRX_REGULAR_END = 15 * 60 + 30  # 15:30
+        NXT_POST_START = 15 * 60 + 40  # 15:40
+        NXT_POST_END = 20 * 60  # 20:00
+
+        if NXT_PRE_START <= time_val < NXT_PRE_END:
+            return ["NXT"]
+        elif REGULAR_START <= time_val < NXT_REGULAR_END:
+            return ["KRX", "NXT"]
+        elif NXT_REGULAR_END <= time_val < KRX_REGULAR_END:
+            return ["KRX"]
+        elif NXT_POST_START <= time_val <= NXT_POST_END:
+            return ["NXT"]
+        else:
+            return []
+

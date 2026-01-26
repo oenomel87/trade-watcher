@@ -145,9 +145,13 @@ async def list_items_summary(
     use_cache: bool = Query(True, description="DB 캐시 사용 여부"),
     max_age_sec: int | None = Query(None, ge=0, description="캐시 허용 최대 경과초"),
     refresh_missing: bool = Query(False, description="캐시 누락 시 실시간 조회"),
-    market: str = Query("J", description="시장 구분 (J/NX/UN)"),
+    market: str = Query("J", description="시장 구분 (J/NX)"),
+    include_nxt: bool = Query(False, description="NXT 시세 추가 포함"),
 ):
-    """watch list 종목 + 현재가 요약 조회."""
+    """watch list 종목 + 현재가 요약 조회.
+
+    - **include_nxt**: True면 NXT 시세도 함께 조회하여 nxt_* 필드에 포함
+    """
     service = WatchListService()
     try:
         items = service.list_items_with_price(
@@ -157,6 +161,7 @@ async def list_items_summary(
             max_age_sec=max_age_sec,
             refresh_missing=refresh_missing,
             market=market,
+            include_nxt=include_nxt,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

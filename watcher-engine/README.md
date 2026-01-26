@@ -81,6 +81,7 @@ GET /health
 | GET | `/stocks/{code}` | 종목 상세 조회 |
 | GET | `/stocks/{code}/prices/periodic` | 종목 기간별 시세 조회 |
 | GET | `/stocks/{code}/prices/current` | 종목 현재가 조회 |
+| GET | `/stocks/{code}/prices/combined` | KRX/NXT 통합 시세 조회 |
 | POST | `/stocks/load` | 종목 데이터 로드 |
 
 ### Watch list API
@@ -135,6 +136,12 @@ curl -X POST "http://localhost:8000/watchlists/1/items?stock_code=000660"
 
 # watch list 종목 요약 (현재가, 거래량, 등락폭)
 curl "http://localhost:8000/watchlists/1/items/summary?use_cache=true&max_age_sec=60"
+
+# watch list 종목 요약 (NXT 시세 포함)
+curl "http://localhost:8000/watchlists/1/items/summary?include_nxt=true"
+
+# KRX/NXT 통합 시세 조회
+curl "http://localhost:8000/stocks/005930/prices/combined"
 ```
 
 ## 🔑 외부 API 사용
@@ -178,6 +185,14 @@ SQLite를 사용하며, `data/stocks.db`에 저장됩니다.
 | stock_code | TEXT | 종목 코드 |
 | exchange | TEXT | 거래소 (KRX/NXT) |
 | is_primary | INTEGER | 대표 거래소 여부 |
+
+## ⏰ 거래 시간 정보 (NXT)
+
+NXT(넥스트레이드)는 아래 시간대에 거래가 가능합니다.
+
+- **장전(프리마켓)**: 08:00 ~ 08:50
+- **정규장(메인마켓)**: 09:00:30 ~ 15:20
+- **장후(애프터마켓)**: 15:40 ~ 20:00 (NXT 전용)
 
 ## 📝 License
 

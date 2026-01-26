@@ -43,6 +43,8 @@ def main() -> None:
                 asyncio.run(_run_items(args, config))
         elif args.command == "stocks":
             asyncio.run(_run_stock_search(args, config))
+        elif args.command == "prices":
+            asyncio.run(_run_combined_price(args, config))
         else:
             print("지원하지 않는 명령입니다.")
             raise SystemExit(2)
@@ -89,6 +91,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     items.add_argument("-w", "--watch", action="store_true", help="주기적으로 새로 고침")
     items.add_argument("--interval", type=float, help="갱신 주기(초)")
+    items.add_argument("--include-nxt", action="store_true", help="NXT 시세 함께 조회")
 
     items_sub = items.add_subparsers(dest="items_command", required=False)
     items_add = items_sub.add_parser("add", help="관심목록 종목 추가", parents=[common_items])
@@ -102,11 +105,18 @@ def _build_parser() -> argparse.ArgumentParser:
     stocks.add_argument("-q", "--query", required=True, help="검색어(종목명 또는 코드)")
     stocks.add_argument("--limit", type=int, help="검색 개수 (기본값: 20)")
 
+    prices = subparsers.add_parser("prices", help="종목 시세 조회")
+    prices.add_argument("stock_code", help="종목 코드")
+    prices.add_argument("--no-cache", action="store_true", help="캐시 사용 안 함")
+    prices.add_argument("-w", "--watch", action="store_true", help="주기적으로 새로 고침")
+    prices.add_argument("--interval", type=float, help="갱신 주기(초)")
+
     parser._watcher_subparsers = {  # type: ignore[attr-defined]
         "help": help_parser,
         "watchlists": watchlists,
         "items": items,
         "stocks": stocks,
+        "prices": prices,
     }
 
     return parser
@@ -159,13 +169,14 @@ async def _run_items(args: argparse.Namespace, config: CliConfig) -> None:
                     max_age_sec=args.max_age_sec if args.max_age_sec is not None else config.summary_cache_age_sec,
                     refresh_missing=args.refresh_missing,
                     market=market,
+                    include_nxt=args.include_nxt,
                 )
             except EngineAPIError as exc:
                 _print_error(f"종목 조회에 실패했습니다: {exc.message}")
                 return
 
             await _fill_stock_names(client, items, name_cache)
-            _print_item_table(watchlist, items, name_cache)
+            _print_item_table(watchlist, items, name_cache, include_nxt=args.include_nxt)
 
         if args.watch:
             await _watch_loop(render, interval, title="종목 목록")
@@ -302,6 +313,34 @@ async def _run_stock_search(args: argparse.Namespace, config: CliConfig) -> None
         _print_table(["코드", "종목명", "시장", "거래소"], rows)
 
 
+async def _run_combined_price(args: argparse.Namespace, config: CliConfig) -> None:
+    async with EngineClient(config.engine_url) as client:
+        interval = args.interval or config.refresh_interval_sec
+        stock_code = args.stock_code
+
+        name_cache: dict[str, str] = {}
+
+        async def render() -> None:
+            try:
+                stock = await client.get_stock(stock_code)
+                name_cache[stock.code] = stock.name
+                
+                result = await client.get_combined_price(
+                    code=stock_code,
+                    use_cache=not args.no_cache,
+                )
+            except EngineAPIError as exc:
+                _print_error(f"시세 조회에 실패했습니다: {exc.message}")
+                return
+
+            _print_combined_price(result, name_cache.get(stock_code, "알 수 없음"))
+
+        if args.watch:
+            await _watch_loop(render, interval, title=f"[{stock_code}] 통합 시세")
+        else:
+            await render()
+
+
 def _filter_watchlists(watchlists: list[Watchlist], query: str | None) -> list[Watchlist]:
     if not query:
         return watchlists
@@ -403,6 +442,7 @@ def _print_item_table(
     watchlist: Watchlist,
     items: list[WatchlistItemSummary],
     name_cache: dict[str, str],
+    include_nxt: bool = False,
 ) -> None:
     header = f"관심목록: {watchlist.name} (ID: {watchlist.id})"
     print(header)
@@ -411,21 +451,74 @@ def _print_item_table(
         print("표시할 종목이 없습니다.")
         return
 
+    headers = ["코드", "종목명", "현재가", "등락", "등락률", "거래량", "소스"]
+    if include_nxt:
+        headers.extend(["NXT현재가", "NXT등락", "NXT거래량"])
+
     rows: list[list[str]] = []
     for item in items:
         name = name_cache.get(item.stock_code) or item.memo or ""
-        rows.append(
-            [
-                item.stock_code,
-                name,
-                _format_number(item.current_price),
-                _format_signed(item.change),
-                _format_rate(item.change_rate),
-                _format_number(item.volume),
-                item.price_source or "",
-            ]
-        )
-    _print_table(["코드", "종목명", "현재가", "등락", "등락률", "거래량", "소스"], rows)
+        row = [
+            item.stock_code,
+            name,
+            _format_number(item.current_price),
+            _format_signed(item.change),
+            _format_rate(item.change_rate),
+            _format_number(item.volume),
+            item.price_source or "",
+        ]
+        if include_nxt:
+            row.extend([
+                _format_number(item.nxt_current_price),
+                _format_signed(item.nxt_change),
+                _format_number(item.nxt_volume),
+            ])
+        rows.append(row)
+    _print_table(headers, rows)
+
+
+def _print_combined_price(result: Any, name: str) -> None:
+    print(f"종목: {name} ({result.code})")
+    print(f"활성 거래소: {', '.join(result.active_exchanges) or '없음'}")
+    print("-" * 40)
+    
+    # Best Price
+    best = result.best
+    exchange_label = f"[{best.exchange}]" if best.exchange else "[N/A]"
+    print(f"최적가: {exchange_label} {_format_number(best.price)}")
+    print("-" * 40)
+
+    # Details
+    rows = []
+    # KRX
+    krx = result.krx
+    if krx.error:
+        rows.append(["KRX", "오류", krx.error, "-", "-"])
+    else:
+        p = krx.price
+        rows.append([
+            "KRX", 
+            _format_number(p.get("stck_prpr")), 
+            _format_signed(p.get("prdy_vrss")),
+            _format_number(p.get("acml_vol")),
+            p.get("acml_tr_pbmn") or "-"
+        ])
+        
+    # NXT
+    nxt = result.nxt
+    if nxt.error:
+        rows.append(["NXT", "오류", nxt.error, "-", "-"])
+    else:
+        p = nxt.price
+        rows.append([
+            "NXT", 
+            _format_number(p.get("stck_prpr")), 
+            _format_signed(p.get("prdy_vrss")),
+            _format_number(p.get("acml_vol")),
+            p.get("acml_tr_pbmn") or "-"
+        ])
+
+    _print_table(["거래소", "현재가", "전일대비", "거래량", "거래대금"], rows)
 
 
 def _print_table(headers: list[str], rows: list[list[str]]) -> None:

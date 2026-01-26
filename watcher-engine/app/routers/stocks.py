@@ -135,6 +135,32 @@ async def get_current_price(
         raise HTTPException(status_code=502, detail=detail) from exc
 
 
+@router.get("/{code}/prices/combined")
+async def get_combined_price(
+    code: str,
+    use_cache: bool = Query(False, description="DB 캐시 사용 여부"),
+    max_age_sec: int | None = Query(None, ge=0, description="캐시 허용 최대 경과초"),
+):
+    """
+    KRX와 NXT 통합 시세 조회
+
+    - **code**: 종목 코드 (예: 005930)
+    - 현재 활성 거래소 정보와 최적 가격 포함
+    """
+    service = StockCurrentPriceService()
+    try:
+        return service.get_combined_price(
+            stock_code=code,
+            use_cache=use_cache,
+            max_age_sec=max_age_sec,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except APIError as exc:
+        detail = {"message": str(exc), "response": exc.response}
+        raise HTTPException(status_code=502, detail=detail) from exc
+
+
 @router.post("/load")
 async def load_stocks():
     """
