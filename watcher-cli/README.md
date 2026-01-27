@@ -15,6 +15,22 @@ uv sync
 uv run python main.py watchlists
 ```
 
+## Alias Setup (Recommended)
+
+매번 긴 명령어를 입력하는 대신 단축어(Alias)를 설정하면 편리합니다. `~/.zshrc` (또는 `~/.bash_profile`)에 다음 내용을 추가하세요:
+
+```bash
+# trade-watcher alias
+alias tw='uv --directory /Users/yspark/workspace/toy/trade-watcher/watcher-cli run python main.py'
+```
+
+이후 `source ~/.zshrc`를 수행하면 어디서든 `tw` 명령어로 실행할 수 있습니다:
+
+```bash
+tw watchlists
+tw prices 005930 -w
+```
+
 엔진이 별도로 실행 중이어야 합니다:
 
 ```bash
