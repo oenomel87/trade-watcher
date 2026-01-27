@@ -82,9 +82,48 @@ uv run python main.py items delete --watchlist 1 --item-id 3
 uv run python main.py items delete --watchlist 1 --stock-code 005930
 ```
 
+## Interactive Commands (대화형 명령)
+
+CLI는 대화형 모드도 지원합니다.
+
+### Monitor (모니터링 대시보드)
+
+```bash
+# 대화형 모니터링 시작 (기본 관심목록)
+uv run python main.py monitor
+
+# 특정 관심목록으로 시작
+uv run python main.py monitor --watchlist 1
+
+# NXT 시세 포함
+uv run python main.py monitor --include-nxt
+```
+
+**단축키:**
+| 키 | 동작 |
+|----|------|
+| `q` | 종료 |
+| `n` | NXT 시세 표시 토글 |
+| `r` | 즉시 새로고침 |
+| `1`-`9` | 해당 번호의 관심목록으로 전환 |
+
+### Add Wizard (종목 추가 마법사)
+
+```bash
+# 단계별 종목 추가 시작
+uv run python main.py add
+```
+
+마법사가 안내하는 단계:
+1. 관심목록 선택 (번호 입력)
+2. 종목 검색 및 선택
+3. 메모 입력 (선택사항)
+4. 확인 후 추가
+
 참고:
 - 폴더는 CLI에서 다루지 않으며, 종목 추가 시 기본 폴더로 저장됩니다.
 - 현재가 캐시가 없으면 실시간 조회를 시도합니다. (`--no-refresh-missing`으로 비활성화 가능)
+
 
 ## Configuration
 

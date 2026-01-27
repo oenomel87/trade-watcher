@@ -10,7 +10,7 @@ import json
 from core.config import load_config
 from db import Database
 from external.client import APIError
-from external.kis import KISClient
+from external.kis import get_kis_client
 
 
 @dataclass(frozen=True)
@@ -103,7 +103,7 @@ class StockCurrentPriceService:
 
     async def _fetch_from_kis(self, query: CurrentPriceQuery) -> dict:
         if self.client is None:
-            self.client = KISClient(load_config())
+            self.client = get_kis_client()
 
         try:
             result = await self.client.get_current_price(

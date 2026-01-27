@@ -8,7 +8,7 @@ from datetime import datetime
 from core.config import load_config
 from db import Database, StockPricePeriodic
 from external.client import APIError
-from external.kis import KISClient
+from external.kis import get_kis_client
 
 
 @dataclass(frozen=True)
@@ -136,7 +136,7 @@ class StockPriceService:
 
     async def _fetch_from_kis(self, query: PeriodicPriceQuery) -> dict:
         if self.client is None:
-            self.client = KISClient(load_config())
+            self.client = get_kis_client()
         try:
             result = await self.client.get_periodic_prices(
                 stock_code=query.stock_code,

@@ -5,7 +5,10 @@ import asyncio
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 import io
+import select
 import sys
+import termios
+import tty
 from typing import Any
 
 from watcher_cli.client import EngineAPIError, EngineClient
@@ -47,6 +50,10 @@ def main() -> None:
             asyncio.run(_run_stock_search(args, config))
         elif args.command == "prices":
             asyncio.run(_run_combined_price(args, config))
+        elif args.command == "monitor":
+            asyncio.run(_run_monitor(args, config))
+        elif args.command == "add":
+            asyncio.run(_run_add_wizard(args, config))
         else:
             print("지원하지 않는 명령입니다.")
             raise SystemExit(2)
@@ -113,12 +120,21 @@ def _build_parser() -> argparse.ArgumentParser:
     prices.add_argument("-w", "--watch", action="store_true", help="주기적으로 새로 고침")
     prices.add_argument("--interval", type=float, help="갱신 주기(초)")
 
+    monitor = subparsers.add_parser("monitor", help="대화형 모니터링 대시보드")
+    monitor.add_argument("-l", "--watchlist", help="시작할 관심목록 ID 또는 이름")
+    monitor.add_argument("--interval", type=float, help="갱신 주기(초)")
+    monitor.add_argument("--include-nxt", action="store_true", help="NXT 시세 함께 조회")
+
+    add_wizard = subparsers.add_parser("add", help="대화형 종목 추가 마법사")
+
     parser._watcher_subparsers = {  # type: ignore[attr-defined]
         "help": help_parser,
         "watchlists": watchlists,
         "items": items,
         "stocks": stocks,
         "prices": prices,
+        "monitor": monitor,
+        "add": add_wizard,
     }
 
     return parser
@@ -341,6 +357,177 @@ async def _run_combined_price(args: argparse.Namespace, config: CliConfig) -> No
             await _watch_loop(render, interval, title=f"[{stock_code}] 통합 시세")
         else:
             await render()
+
+
+async def _run_monitor(args: argparse.Namespace, config: CliConfig) -> None:
+    """Interactive monitoring dashboard with keyboard controls."""
+    async with EngineClient(config.engine_url) as client:
+        interval = args.interval or config.refresh_interval_sec
+        include_nxt = args.include_nxt
+
+        try:
+            watchlists = await client.list_watchlists()
+        except EngineAPIError as exc:
+            _print_error(f"관심목록 조회에 실패했습니다: {exc.message}")
+            return
+
+        if not watchlists:
+            _print_error("관심목록이 없습니다.")
+            return
+
+        # Select initial watchlist
+        current_watchlist = await _resolve_watchlist(client, args.watchlist, config.default_watchlist_id)
+        if current_watchlist is None:
+            current_watchlist = watchlists[0]
+
+        name_cache: dict[str, str] = {}
+
+        async def render() -> None:
+            try:
+                items = await client.list_items_summary(
+                    watchlist_id=current_watchlist.id,
+                    use_cache=False,
+                    refresh_missing=True,
+                    market=config.market,
+                    include_nxt=include_nxt,
+                )
+            except EngineAPIError as exc:
+                _print_error(f"종목 조회에 실패했습니다: {exc.message}")
+                return
+
+            await _fill_stock_names(client, items, name_cache)
+            _print_item_table(current_watchlist, items, name_cache, include_nxt=include_nxt)
+            nxt_label = " [NXT]" if include_nxt else ""
+            print(f"\n단축키: q=종료  n=NXT토글  r=새로고침  1-9=관심목록전환{nxt_label}")
+
+        # Monitoring loop with key detection
+        previous_lines = 0
+        try:
+            while True:
+                # Build title with status
+                title = f"모니터링: {current_watchlist.name}"
+                output = await _capture_output(render, title)
+                output, line_count = _normalize_output(output)
+                _render_in_place(output, previous_lines)
+                previous_lines = line_count
+
+                key = await _read_key_with_timeout(interval)
+                
+                if key == 'q':
+                    print("\n종료합니다.")
+                    return
+                elif key == 'n':
+                    include_nxt = not include_nxt
+                elif key == 'r':
+                    pass  # Just refresh
+                elif key and key.isdigit():
+                    idx = int(key) - 1
+                    if 0 <= idx < len(watchlists):
+                        current_watchlist = watchlists[idx]
+
+        except KeyboardInterrupt:
+            print("\n중단되었습니다.")
+
+
+
+async def _run_add_wizard(args: argparse.Namespace, config: CliConfig) -> None:
+    """Interactive wizard for adding stocks to watchlist."""
+    async with EngineClient(config.engine_url) as client:
+        print("\n=== 종목 추가 마법사 ===\n")
+
+        # Step 1: Select watchlist
+        print("[1단계] 관심목록 선택")
+        print("-" * 40)
+        
+        try:
+            watchlists = await client.list_watchlists()
+        except EngineAPIError as exc:
+            _print_error(f"관심목록 조회에 실패했습니다: {exc.message}")
+            return
+
+        if not watchlists:
+            _print_error("관심목록이 없습니다. 먼저 관심목록을 생성하세요.")
+            return
+
+        for idx, wl in enumerate(watchlists, 1):
+            desc = f"  - {wl.description}" if wl.description else ""
+            print(f"  {idx}) {wl.name}{desc}")
+        print()
+
+        watchlist_idx = _prompt_number("선택할 번호를 입력하세요", 1, len(watchlists))
+        if watchlist_idx is None:
+            print("취소되었습니다.")
+            return
+        
+        selected_watchlist = watchlists[watchlist_idx - 1]
+        print(f"✓ 선택됨: {selected_watchlist.name}\n")
+
+        # Step 2: Search and select stock
+        print("[2단계] 종목 검색")
+        print("-" * 40)
+        
+        query = input("검색어 입력: ").strip()
+        if not query:
+            print("취소되었습니다.")
+            return
+
+        try:
+            stocks = await client.search_stocks(query, limit=10)
+        except EngineAPIError as exc:
+            _print_error(f"종목 검색에 실패했습니다: {exc.message}")
+            return
+
+        if not stocks:
+            _print_error("검색 결과가 없습니다.")
+            return
+
+        print()
+        for idx, stock in enumerate(stocks, 1):
+            print(f"  {idx}) {stock.code}  {stock.name}")
+        print()
+
+        stock_idx = _prompt_number("선택할 번호를 입력하세요", 1, len(stocks))
+        if stock_idx is None:
+            print("취소되었습니다.")
+            return
+
+        selected_stock = stocks[stock_idx - 1]
+        print(f"✓ 선택됨: {selected_stock.name} ({selected_stock.code})\n")
+
+        # Step 3: Optional memo
+        print("[3단계] 메모 입력 (선택사항, Enter로 스킵)")
+        print("-" * 40)
+        memo = input("메모: ").strip() or None
+
+        # Confirmation
+        print("\n[확인]")
+        print("-" * 40)
+        print(f"  관심목록: {selected_watchlist.name}")
+        print(f"  종목: {selected_stock.name} ({selected_stock.code})")
+        if memo:
+            print(f"  메모: {memo}")
+        print()
+
+        confirm = input("추가하시겠습니까? (y/n): ").strip().lower()
+        if confirm != 'y':
+            print("취소되었습니다.")
+            return
+
+        # Add the item
+        folder_id = await _get_default_folder_id(client, selected_watchlist.id)
+
+        try:
+            await client.add_item(
+                watchlist_id=selected_watchlist.id,
+                stock_code=selected_stock.code,
+                folder_id=folder_id,
+                memo=memo,
+            )
+        except EngineAPIError as exc:
+            _print_error(f"종목 추가에 실패했습니다: {exc.message}")
+            return
+
+        print(f"\n✓ 종목 추가 완료: {selected_stock.name} ({selected_stock.code})")
 
 
 def _filter_watchlists(watchlists: list[Watchlist], query: str | None) -> list[Watchlist]:
@@ -598,8 +785,52 @@ def _render_in_place(text: str, previous_lines: int) -> None:
     sys.stdout.flush()
 
 
+def _clear_screen() -> None:
+    """Clear the terminal screen."""
+    sys.stdout.write("\033[2J\033[H")
+    sys.stdout.flush()
+
+
+async def _read_key_with_timeout(timeout: float) -> str | None:
+    """Read a single key with timeout, returns None if no key pressed."""
+    loop = asyncio.get_event_loop()
+    
+    def read_key() -> str | None:
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            rlist, _, _ = select.select([sys.stdin], [], [], timeout)
+            if rlist:
+                return sys.stdin.read(1)
+            return None
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    
+    return await loop.run_in_executor(None, read_key)
+
+
+def _prompt_number(prompt: str, min_val: int, max_val: int) -> int | None:
+    """Prompt user for a number within range. Returns None on invalid or empty input."""
+    try:
+        value = input(f"{prompt} ({min_val}-{max_val}): ").strip()
+        if not value:
+            return None
+        num = int(value)
+        if min_val <= num <= max_val:
+            return num
+        print(f"잘못된 입력입니다. {min_val}에서 {max_val} 사이의 숫자를 입력하세요.")
+        return None
+    except ValueError:
+        print("숫자를 입력하세요.")
+        return None
+    except (EOFError, KeyboardInterrupt):
+        return None
+
+
 def _print_error(message: str) -> None:
     print(message, file=sys.stderr)
+
 
 
 def _print_help(parser: argparse.ArgumentParser, topic: str | None) -> None:
