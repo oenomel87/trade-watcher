@@ -4,6 +4,8 @@ from datetime import datetime
 from pathlib import Path
 import sys
 
+import pytest
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT_DIR))
 
@@ -18,7 +20,7 @@ class FakeKISClient:
         self.responses = responses
         self.calls: list[tuple[str, str]] = []
 
-    def get_current_price(
+    async def get_current_price(
         self,
         stock_code: str,
         market: str = "J",
@@ -27,7 +29,8 @@ class FakeKISClient:
         return self.responses.get((stock_code, market), {"rt_cd": "1", "msg1": "조회 실패"})
 
 
-def test_combined_price_query():
+@pytest.mark.asyncio
+async def test_combined_price_query():
     """KRX와 NXT 통합 시세 조회 테스트."""
     responses = {
         ("005930", "J"): {
@@ -52,7 +55,7 @@ def test_combined_price_query():
     client = FakeKISClient(responses)
     service = StockCurrentPriceService(db=db, client=client)
 
-    result = service.get_combined_price(stock_code="005930")
+    result = await service.get_combined_price(stock_code="005930")
 
     assert result["code"] == "005930"
     assert result["krx"]["price"]["stck_prpr"] == "72000"
@@ -66,7 +69,8 @@ def test_combined_price_query():
     assert ("005930", "NX") in client.calls
 
 
-def test_combined_price_nxt_only():
+@pytest.mark.asyncio
+async def test_combined_price_nxt_only():
     """NXT만 거래 가능한 경우 테스트."""
     responses = {
         ("005930", "J"): {
@@ -87,7 +91,7 @@ def test_combined_price_nxt_only():
     client = FakeKISClient(responses)
     service = StockCurrentPriceService(db=db, client=client)
 
-    result = service.get_combined_price(stock_code="005930")
+    result = await service.get_combined_price(stock_code="005930")
 
     assert result["krx"]["error"] is not None  # KRX 오류
     assert result["nxt"]["price"]["stck_prpr"] == "72100"

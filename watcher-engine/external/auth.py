@@ -7,7 +7,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-import requests
+import httpx
 
 from db import Database
 
@@ -50,7 +50,7 @@ class TokenManager:
         self._token_info: TokenInfo | None = None
         self._storage = Database()
 
-    def get_token(self) -> str:
+    async def get_token(self) -> str:
         """
         접근 토큰 반환
 
@@ -66,11 +66,11 @@ class TokenManager:
             self._token_info = self._load_token_from_storage()
 
         if self._token_info is None or self._token_info.is_expired:
-            self._refresh_token()
+            await self._refresh_token()
 
         return self._token_info.access_token
 
-    def _refresh_token(self) -> None:
+    async def _refresh_token(self) -> None:
         """토큰 새로 발급"""
         url = f"{self.base_url}{self.TOKEN_ENDPOINT}"
 
@@ -81,11 +81,14 @@ class TokenManager:
         }
 
         try:
-            response = requests.post(url, json=data, timeout=30)
-            response.raise_for_status()
-            result = response.json()
-        except requests.RequestException as e:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(url, json=data)
+                response.raise_for_status()
+                result = response.json()
+        except httpx.RequestError as e:
             raise TokenError(f"토큰 발급 요청 실패: {e}") from e
+        except httpx.HTTPStatusError as e:
+            raise TokenError(f"토큰 발급 실패: {e.response.status_code}") from e
 
         # 응답 검증
         if "access_token" not in result:

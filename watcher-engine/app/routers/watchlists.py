@@ -154,7 +154,7 @@ async def list_items_summary(
     """
     service = WatchListService()
     try:
-        items = service.list_items_with_price(
+        items = await service.list_items_with_price(
             watchlist_id=watchlist_id,
             folder_id=folder_id,
             use_cache=use_cache,

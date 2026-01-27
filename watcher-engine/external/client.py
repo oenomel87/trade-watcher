@@ -6,8 +6,7 @@ HTTP API 클라이언트 기본 모듈
 
 from typing import Any
 
-import requests
-from requests.exceptions import RequestException
+import httpx
 
 
 class APIError(Exception):
@@ -21,12 +20,12 @@ class APIError(Exception):
 
 class BaseAPIClient:
     """
-    HTTP API 클라이언트 기본 클래스
+    비동기 HTTP API 클라이언트 기본 클래스
 
     모든 API 클라이언트가 상속받아 사용합니다.
     """
 
-    def __init__(self, base_url: str, timeout: int = 30):
+    def __init__(self, base_url: str, timeout: float = 30.0):
         """
         Args:
             base_url: API 기본 URL
@@ -34,13 +33,22 @@ class BaseAPIClient:
         """
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self.session = requests.Session()
+        self._client: httpx.AsyncClient | None = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """클라이언트 인스턴스 반환 (lazy initialization)"""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                base_url=self.base_url,
+                timeout=self.timeout,
+            )
+        return self._client
 
     def _build_url(self, endpoint: str) -> str:
         """전체 URL 생성"""
         return f"{self.base_url}/{endpoint.lstrip('/')}"
 
-    def _request(
+    async def _request(
         self,
         method: str,
         endpoint: str,
@@ -64,20 +72,20 @@ class BaseAPIClient:
         Raises:
             APIError: API 요청 실패 시
         """
-        url = self._build_url(endpoint)
+        client = await self._get_client()
+        url = endpoint.lstrip("/")
         default_headers = {"Content-Type": "application/json"}
 
         if headers:
             default_headers.update(headers)
 
         try:
-            response = self.session.request(
+            response = await client.request(
                 method=method,
                 url=url,
                 headers=default_headers,
                 params=params,
                 json=json_data,
-                timeout=self.timeout,
             )
 
             # 응답 JSON 파싱
@@ -87,7 +95,7 @@ class BaseAPIClient:
                 result = {"raw_response": response.text}
 
             # HTTP 에러 확인
-            if not response.ok:
+            if not response.is_success:
                 raise APIError(
                     message=f"API 요청 실패: {response.status_code}",
                     status_code=response.status_code,
@@ -96,33 +104,35 @@ class BaseAPIClient:
 
             return result
 
-        except RequestException as e:
+        except httpx.RequestError as e:
             raise APIError(f"네트워크 에러: {e}") from e
 
-    def get(
+    async def get(
         self,
         endpoint: str,
         headers: dict[str, str] | None = None,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """GET 요청"""
-        return self._request("GET", endpoint, headers=headers, params=params)
+        return await self._request("GET", endpoint, headers=headers, params=params)
 
-    def post(
+    async def post(
         self,
         endpoint: str,
         headers: dict[str, str] | None = None,
         json_data: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """POST 요청"""
-        return self._request("POST", endpoint, headers=headers, json_data=json_data)
+        return await self._request("POST", endpoint, headers=headers, json_data=json_data)
 
-    def close(self) -> None:
-        """세션 종료"""
-        self.session.close()
+    async def close(self) -> None:
+        """클라이언트 종료"""
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
-    def __enter__(self):
+    async def __aenter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()

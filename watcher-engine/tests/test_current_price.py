@@ -3,6 +3,8 @@
 from pathlib import Path
 import sys
 
+import pytest
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT_DIR))
 
@@ -17,7 +19,7 @@ class FakeKISClient:
         self.responses = responses
         self.calls: list[str] = []
 
-    def get_current_price(
+    async def get_current_price(
         self,
         stock_code: str,
         market: str = "J",
@@ -26,7 +28,8 @@ class FakeKISClient:
         return self.responses[stock_code]
 
 
-def test_current_price_cache_flow():
+@pytest.mark.asyncio
+async def test_current_price_cache_flow():
     responses = {
         "005930": {
             "rt_cd": "0",
@@ -43,7 +46,7 @@ def test_current_price_cache_flow():
     client = FakeKISClient(responses)
     service = StockCurrentPriceService(db=db, client=client)
 
-    result = service.get_current_price(
+    result = await service.get_current_price(
         stock_code="005930",
         market="J",
         use_cache=True,
@@ -53,7 +56,7 @@ def test_current_price_cache_flow():
     assert result["price"]["stck_prpr"] == "72000"
     assert client.calls == ["005930"]
 
-    cached = service.get_current_price(
+    cached = await service.get_current_price(
         stock_code="005930",
         market="J",
         use_cache=True,

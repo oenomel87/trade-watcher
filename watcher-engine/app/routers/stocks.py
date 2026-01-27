@@ -91,7 +91,7 @@ async def get_periodic_prices(
     """
     service = StockPriceService()
     try:
-        return service.get_periodic_prices(
+        return await service.get_periodic_prices(
             stock_code=code,
             start_date=start_date,
             end_date=end_date,
@@ -122,7 +122,7 @@ async def get_current_price(
     """
     service = StockCurrentPriceService()
     try:
-        return service.get_current_price(
+        return await service.get_current_price(
             stock_code=code,
             market=market,
             use_cache=use_cache,
@@ -149,7 +149,7 @@ async def get_combined_price(
     """
     service = StockCurrentPriceService()
     try:
-        return service.get_combined_price(
+        return await service.get_combined_price(
             stock_code=code,
             use_cache=use_cache,
             max_age_sec=max_age_sec,

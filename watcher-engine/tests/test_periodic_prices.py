@@ -3,6 +3,8 @@
 from pathlib import Path
 import sys
 
+import pytest
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT_DIR))
 
@@ -17,7 +19,7 @@ class FakeKISClient:
         self.responses = responses
         self.calls: list[str] = []
 
-    def get_periodic_prices(
+    async def get_periodic_prices(
         self,
         stock_code: str,
         start_date: str,
@@ -30,7 +32,8 @@ class FakeKISClient:
         return self.responses[stock_code]
 
 
-def test_periodic_prices_samsung_cache():
+@pytest.mark.asyncio
+async def test_periodic_prices_samsung_cache():
     responses = {
         "005930": {
             "rt_cd": "0",
@@ -73,7 +76,7 @@ def test_periodic_prices_samsung_cache():
     client = FakeKISClient(responses)
     service = StockPriceService(db=db, client=client)
 
-    result = service.get_periodic_prices(
+    result = await service.get_periodic_prices(
         stock_code="005930",
         start_date="20240101",
         end_date="20240105",
@@ -85,7 +88,7 @@ def test_periodic_prices_samsung_cache():
     assert result["count"] == 2
     assert client.calls == ["005930"]
 
-    cached = service.get_periodic_prices(
+    cached = await service.get_periodic_prices(
         stock_code="005930",
         start_date="20240101",
         end_date="20240105",
@@ -98,7 +101,8 @@ def test_periodic_prices_samsung_cache():
     assert client.calls == ["005930"]
 
 
-def test_periodic_prices_sk_hynix():
+@pytest.mark.asyncio
+async def test_periodic_prices_sk_hynix():
     responses = {
         "000660": {
             "rt_cd": "0",
@@ -126,7 +130,7 @@ def test_periodic_prices_sk_hynix():
     client = FakeKISClient(responses)
     service = StockPriceService(db=db, client=client)
 
-    result = service.get_periodic_prices(
+    result = await service.get_periodic_prices(
         stock_code="000660",
         start_date="20240101",
         end_date="20240105",

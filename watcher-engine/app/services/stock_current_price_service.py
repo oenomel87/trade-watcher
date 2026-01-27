@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import json
@@ -36,7 +37,7 @@ class StockCurrentPriceService:
         self.db.create_tables()
         self.client = client
 
-    def get_current_price(
+    async def get_current_price(
         self,
         stock_code: str,
         market: str = "J",
@@ -60,7 +61,7 @@ class StockCurrentPriceService:
                     updated_at=cached.get("updated_at"),
                 )
 
-        response = self._fetch_from_kis(query)
+        response = await self._fetch_from_kis(query)
         output = response.get("output", {}) if isinstance(response, dict) else {}
 
         self.db.upsert_current_price(
@@ -100,12 +101,12 @@ class StockCurrentPriceService:
             max_age_sec=max_age_sec,
         )
 
-    def _fetch_from_kis(self, query: CurrentPriceQuery) -> dict:
+    async def _fetch_from_kis(self, query: CurrentPriceQuery) -> dict:
         if self.client is None:
             self.client = KISClient(load_config())
 
         try:
-            result = self.client.get_current_price(
+            result = await self.client.get_current_price(
                 stock_code=query.stock_code,
                 market=query.market,
             )
@@ -165,13 +166,13 @@ class StockCurrentPriceService:
 
         return datetime.now() - parsed <= timedelta(seconds=max_age_sec)
 
-    def get_combined_price(
+    async def get_combined_price(
         self,
         stock_code: str,
         use_cache: bool = False,
         max_age_sec: int | None = None,
     ) -> dict:
-        """KRX와 NXT 시세를 모두 조회하여 통합 결과 반환.
+        """KRX와 NXT 시세를 동시에 조회하여 통합 결과 반환.
 
         Args:
             stock_code: 종목코드
@@ -181,32 +182,36 @@ class StockCurrentPriceService:
         Returns:
             dict: KRX/NXT 각각의 시세와 최적 가격 정보
         """
-        krx_price = None
-        nxt_price = None
-        krx_error = None
-        nxt_error = None
 
-        try:
-            krx_result = self.get_current_price(
-                stock_code=stock_code,
-                market="J",
-                use_cache=use_cache,
-                max_age_sec=max_age_sec,
-            )
-            krx_price = krx_result.get("price", {})
-        except Exception as e:
-            krx_error = str(e)
+        async def fetch_krx():
+            try:
+                result = await self.get_current_price(
+                    stock_code=stock_code,
+                    market="J",
+                    use_cache=use_cache,
+                    max_age_sec=max_age_sec,
+                )
+                return result.get("price", {}), None
+            except Exception as e:
+                return None, str(e)
 
-        try:
-            nxt_result = self.get_current_price(
-                stock_code=stock_code,
-                market="NX",
-                use_cache=use_cache,
-                max_age_sec=max_age_sec,
-            )
-            nxt_price = nxt_result.get("price", {})
-        except Exception as e:
-            nxt_error = str(e)
+        async def fetch_nxt():
+            try:
+                result = await self.get_current_price(
+                    stock_code=stock_code,
+                    market="NX",
+                    use_cache=use_cache,
+                    max_age_sec=max_age_sec,
+                )
+                return result.get("price", {}), None
+            except Exception as e:
+                return None, str(e)
+
+        # KRX와 NXT 동시 조회
+        (krx_price, krx_error), (nxt_price, nxt_error) = await asyncio.gather(
+            fetch_krx(),
+            fetch_nxt(),
+        )
 
         best_price = self._select_best_price(krx_price, nxt_price)
 
@@ -291,4 +296,3 @@ class StockCurrentPriceService:
             return ["NXT"]
         else:
             return []
-

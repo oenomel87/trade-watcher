@@ -38,7 +38,7 @@ class StockPriceService:
         self.db.create_tables()
         self.client = client
 
-    def get_periodic_prices(
+    async def get_periodic_prices(
         self,
         stock_code: str,
         start_date: str,
@@ -73,7 +73,7 @@ class StockPriceService:
                     source="db",
                 )
 
-        response = self._fetch_from_kis(query)
+        response = await self._fetch_from_kis(query)
         output2 = response.get("output2", []) if isinstance(response, dict) else []
 
         prices = [self._map_output_to_model(query, item) for item in output2]
@@ -134,11 +134,11 @@ class StockPriceService:
 
         return parsed.strftime("%Y%m%d")
 
-    def _fetch_from_kis(self, query: PeriodicPriceQuery) -> dict:
+    async def _fetch_from_kis(self, query: PeriodicPriceQuery) -> dict:
         if self.client is None:
             self.client = KISClient(load_config())
         try:
-            result = self.client.get_periodic_prices(
+            result = await self.client.get_periodic_prices(
                 stock_code=query.stock_code,
                 start_date=query.start_date,
                 end_date=query.end_date,

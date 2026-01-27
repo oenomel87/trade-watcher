@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 
 from db import Database
@@ -288,7 +289,7 @@ class WatchListService:
         )
         conn.commit()
 
-    def list_items_with_price(
+    async def list_items_with_price(
         self,
         watchlist_id: int,
         folder_id: int | None = None,
@@ -298,7 +299,7 @@ class WatchListService:
         market: str = "J",
         include_nxt: bool = False,
     ) -> list[dict]:
-        """종목 목록과 현재가 조회.
+        """종목 목록과 현재가 조회 (비동기, 동시 조회).
 
         Args:
             watchlist_id: watch list ID
@@ -312,13 +313,13 @@ class WatchListService:
         items = self.list_items(watchlist_id, folder_id)
         price_service = StockCurrentPriceService(db=self.db)
 
-        results = []
-        for item in items:
+        async def fetch_item_price(item: dict) -> dict:
             price_payload = {}
             source = None
             nxt_price_payload = {}
             nxt_source = None
 
+            # 캐시 조회
             if use_cache:
                 cached = self.db.get_current_price(item["stock_code"], market)
                 if cached:
@@ -330,14 +331,19 @@ class WatchListService:
                     else:
                         price_payload = {}
 
+            # 캐시 없으면 API 호출
             if refresh_missing and not price_payload:
-                live = price_service.get_current_price(
-                    stock_code=item["stock_code"],
-                    market=market,
-                    use_cache=False,
-                )
-                price_payload = live.get("price", {}) if isinstance(live, dict) else {}
-                source = live.get("source") if isinstance(live, dict) else "kis"
+                try:
+                    live = await price_service.get_current_price(
+                        stock_code=item["stock_code"],
+                        market=market,
+                        use_cache=False,
+                    )
+                    price_payload = live.get("price", {}) if isinstance(live, dict) else {}
+                    source = live.get("source") if isinstance(live, dict) else "kis"
+                except Exception:
+                    price_payload = {}
+                    source = "error"
 
             # NXT 시세 추가 조회
             if include_nxt:
@@ -356,7 +362,7 @@ class WatchListService:
 
                 if refresh_missing and not nxt_price_payload:
                     try:
-                        nxt_live = price_service.get_current_price(
+                        nxt_live = await price_service.get_current_price(
                             stock_code=item["stock_code"],
                             market="NX",
                             use_cache=False,
@@ -385,9 +391,11 @@ class WatchListService:
                 result_item["nxt_change"] = nxt_price_payload.get("prdy_vrss")
                 result_item["nxt_change_rate"] = nxt_price_payload.get("prdy_ctrt")
 
-            results.append(result_item)
+            return result_item
 
-        return results
+        # 모든 종목 동시 조회
+        results = await asyncio.gather(*[fetch_item_price(item) for item in items])
+        return list(results)
 
     def _create_default_folder(self, watchlist_id: int) -> dict:
         conn = self.db.connect()

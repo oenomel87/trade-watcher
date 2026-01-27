@@ -31,7 +31,7 @@ class KISClient(BaseAPIClient):
             base_url=config.base_url,
         )
 
-    def _get_auth_headers(self, tr_id: str | None = None) -> dict[str, str]:
+    async def _get_auth_headers(self, tr_id: str | None = None) -> dict[str, str]:
         """
         인증 헤더 생성
 
@@ -41,7 +41,7 @@ class KISClient(BaseAPIClient):
         Returns:
             dict: 인증 관련 헤더
         """
-        token = self.token_manager.get_token()
+        token = await self.token_manager.get_token()
 
         headers = {
             "authorization": f"Bearer {token}",
@@ -54,7 +54,7 @@ class KISClient(BaseAPIClient):
 
         return headers
 
-    def get(
+    async def get(
         self,
         endpoint: str,
         tr_id: str | None = None,
@@ -73,13 +73,13 @@ class KISClient(BaseAPIClient):
         Returns:
             dict: JSON 응답
         """
-        headers = self._get_auth_headers(tr_id)
+        headers = await self._get_auth_headers(tr_id)
         if extra_headers:
             headers.update(extra_headers)
 
-        return super().get(endpoint, headers=headers, params=params)
+        return await super().get(endpoint, headers=headers, params=params)
 
-    def get_current_price(
+    async def get_current_price(
         self,
         stock_code: str,
         market: str = "J",
@@ -94,26 +94,26 @@ class KISClient(BaseAPIClient):
             "content-type": "application/json; charset=utf-8",
             "custtype": custtype,
         }
-        return self.get(
+        return await self.get(
             endpoint="/uapi/domestic-stock/v1/quotations/inquire-price",
             tr_id="FHKST01010100",
             params=params,
             extra_headers=extra_headers,
         )
 
-    def get_nxt_current_price(
+    async def get_nxt_current_price(
         self,
         stock_code: str,
         custtype: str = "P",
     ) -> dict[str, Any]:
         """NXT 거래소 현재가 조회."""
-        return self.get_current_price(
+        return await self.get_current_price(
             stock_code=stock_code,
             market="NX",
             custtype=custtype,
         )
 
-    def get_periodic_prices(
+    async def get_periodic_prices(
         self,
         stock_code: str,
         start_date: str,
@@ -136,14 +136,14 @@ class KISClient(BaseAPIClient):
             "content-type": "application/json; charset=utf-8",
             "custtype": custtype,
         }
-        return self.get(
+        return await self.get(
             endpoint="/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
             tr_id="FHKST03010100",
             params=params,
             extra_headers=extra_headers,
         )
 
-    def post(
+    async def post(
         self,
         endpoint: str,
         tr_id: str | None = None,
@@ -162,17 +162,17 @@ class KISClient(BaseAPIClient):
         Returns:
             dict: JSON 응답
         """
-        headers = self._get_auth_headers(tr_id)
+        headers = await self._get_auth_headers(tr_id)
         if extra_headers:
             headers.update(extra_headers)
 
-        return super().post(endpoint, headers=headers, json_data=json_data)
+        return await super().post(endpoint, headers=headers, json_data=json_data)
 
     def get_token_info(self):
         """현재 토큰 정보 반환"""
         return self.token_manager.get_token_info()
 
-    def refresh_token(self) -> str:
+    async def refresh_token(self) -> str:
         """토큰 강제 갱신"""
         self.token_manager.invalidate()
-        return self.token_manager.get_token()
+        return await self.token_manager.get_token()
