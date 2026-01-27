@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
+import io
 import sys
 from typing import Any
 
@@ -417,10 +419,12 @@ async def _get_default_folder_id(client: EngineClient, watchlist_id: int) -> int
 
 async def _watch_loop(render, interval: float, title: str) -> None:
     try:
+        previous_lines = 0
         while True:
-            _clear_screen()
-            print(f"{title} (갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-            await render()
+            output = await _capture_output(render, title)
+            output, line_count = _normalize_output(output)
+            _render_in_place(output, previous_lines)
+            previous_lines = line_count
             await asyncio.sleep(interval)
     except KeyboardInterrupt:
         return
@@ -562,8 +566,36 @@ def _format_rate(value: Any) -> str:
         return str(value)
 
 
-def _clear_screen() -> None:
-    print("\033c", end="")
+async def _capture_output(render, title: str) -> str:
+    buffer = io.StringIO()
+    error_buffer = io.StringIO()
+    with redirect_stdout(buffer), redirect_stderr(error_buffer):
+        print(f"{title} (갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
+        await render()
+
+    output = buffer.getvalue()
+    error_output = error_buffer.getvalue()
+    if error_output:
+        if output and not output.endswith("\n"):
+            output += "\n"
+        output += error_output
+    return output
+
+
+def _normalize_output(text: str) -> tuple[str, int]:
+    if not text:
+        return "", 0
+    if not text.endswith("\n"):
+        text += "\n"
+    return text, text.count("\n")
+
+
+def _render_in_place(text: str, previous_lines: int) -> None:
+    if previous_lines:
+        sys.stdout.write(f"\033[{previous_lines}F")
+        sys.stdout.write("\033[J")
+    sys.stdout.write(text)
+    sys.stdout.flush()
 
 
 def _print_error(message: str) -> None:
