@@ -35,7 +35,7 @@ tw prices 005930 -w
 
 ```bash
 cd watcher-engine
-uv run uvicorn app.main:app --reload
+uv run python -m app.main
 ```
 
 ## Usage
@@ -148,7 +148,7 @@ Example config:
 
 ```json
 {
-  "engine_url": "http://localhost:8000",
+  "engine_url": "http://localhost:9944",
   "refresh_interval_sec": 2,
   "summary_cache_age_sec": 60,
   "market": "J",

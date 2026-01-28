@@ -62,3 +62,18 @@ async def health_check():
         "status": "healthy",
         "version": "0.1.0",
     }
+
+
+if __name__ == "__main__":
+    import os
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+    import uvicorn
+
+    # .env 파일 로드
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    load_dotenv(env_path)
+
+    port = int(os.getenv("WATCHER_ENGINE_PORT", "9944"))
+    uvicorn.run("app.main:app", host="127.0.0.1", port=port, reload=True)

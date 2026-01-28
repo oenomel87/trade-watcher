@@ -18,6 +18,7 @@ class KISConfig:
     app_key: str
     app_secret: str
     is_real: bool = False  # True: 실전, False: 모의
+    engine_port: int = 9944  # 엔진 실행 포트
 
     @property
     def base_url(self) -> str:
@@ -51,6 +52,7 @@ def load_config() -> KISConfig:
     app_key = os.getenv("KIS_APP_KEY")
     app_secret = os.getenv("KIS_APP_SECRET")
     is_real = os.getenv("KIS_IS_REAL", "false").lower() == "true"
+    engine_port = int(os.getenv("WATCHER_ENGINE_PORT", "9944"))
 
     if not app_key:
         raise ValueError("KIS_APP_KEY 환경 변수가 설정되지 않았습니다.")
@@ -61,4 +63,5 @@ def load_config() -> KISConfig:
         app_key=app_key,
         app_secret=app_secret,
         is_real=is_real,
+        engine_port=engine_port,
     )

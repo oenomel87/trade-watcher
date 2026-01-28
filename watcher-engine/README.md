@@ -29,12 +29,14 @@ KIS_IS_REAL=false  # true: 실전, false: 모의
 ### 3. 서버 실행
 
 ```bash
-uv run uvicorn app.main:app --reload
+uv run python -m app.main
 ```
 
 서버 실행 후:
-- API 문서: http://localhost:8000/docs
-- 헬스 체크: http://localhost:8000/
+- API 문서: http://localhost:9944/docs
+- 헬스 체크: http://localhost:9944/
+
+> `.env` 파일의 `WATCHER_ENGINE_PORT` 환경 변수로 포트를 변경할 수 있습니다.
 
 ## 📁 프로젝트 구조
 
@@ -105,43 +107,43 @@ GET /health
 
 ```bash
 # 종목 목록 (KOSPI, 10개)
-curl "http://localhost:8000/stocks?market=KOSPI&limit=10"
+curl "http://localhost:9944/stocks?market=KOSPI&limit=10"
 
 # 종목 검색
-curl "http://localhost:8000/stocks/search?q=삼성"
+curl "http://localhost:9944/stocks/search?q=삼성"
 
 # 종목 상세
-curl "http://localhost:8000/stocks/005930"
+curl "http://localhost:9944/stocks/005930"
 
 # 종목 기간별 시세 (일봉)
-curl "http://localhost:8000/stocks/005930/prices/periodic?start_date=20240101&end_date=20240131&period=D"
+curl "http://localhost:9944/stocks/005930/prices/periodic?start_date=20240101&end_date=20240131&period=D"
 
 # 종목 현재가
-curl "http://localhost:8000/stocks/005930/prices/current?market=J"
+curl "http://localhost:9944/stocks/005930/prices/current?market=J"
 
 # 종목 통계
-curl "http://localhost:8000/stocks/stats"
+curl "http://localhost:9944/stocks/stats"
 
 # watch list 생성
-curl -X POST "http://localhost:8000/watchlists?name=관심종목&description=장기투자"
+curl -X POST "http://localhost:9944/watchlists?name=관심종목&description=장기투자"
 
 # watch list 폴더 생성
-curl -X POST "http://localhost:8000/watchlists/1/folders?name=반도체&description=메모리"
+curl -X POST "http://localhost:9944/watchlists/1/folders?name=반도체&description=메모리"
 
 # watch list 종목 추가 (폴더 지정)
-curl -X POST "http://localhost:8000/watchlists/1/items?stock_code=005930&folder_id=2&memo=삼성전자"
+curl -X POST "http://localhost:9944/watchlists/1/items?stock_code=005930&folder_id=2&memo=삼성전자"
 
 # watch list 종목 추가 (최상위)
-curl -X POST "http://localhost:8000/watchlists/1/items?stock_code=000660"
+curl -X POST "http://localhost:9944/watchlists/1/items?stock_code=000660"
 
 # watch list 종목 요약 (현재가, 거래량, 등락폭)
-curl "http://localhost:8000/watchlists/1/items/summary?use_cache=true&max_age_sec=60"
+curl "http://localhost:9944/watchlists/1/items/summary?use_cache=true&max_age_sec=60"
 
 # watch list 종목 요약 (NXT 시세 포함)
-curl "http://localhost:8000/watchlists/1/items/summary?include_nxt=true"
+curl "http://localhost:9944/watchlists/1/items/summary?include_nxt=true"
 
 # KRX/NXT 통합 시세 조회
-curl "http://localhost:8000/stocks/005930/prices/combined"
+curl "http://localhost:9944/stocks/005930/prices/combined"
 ```
 
 ## 🔑 외부 API 사용

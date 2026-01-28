@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class CliConfig(BaseModel):
     """Top-level CLI settings."""
 
-    engine_url: str = Field(default="http://localhost:8000")
+    engine_url: str = Field(default="http://localhost:9944")
     refresh_interval_sec: int = Field(default=2, ge=1)
     summary_cache_age_sec: int = Field(default=60, ge=0)
     market: str = Field(default="J")

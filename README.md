@@ -46,8 +46,8 @@ uv sync
 # KIS_APP_KEY, KIS_APP_SECRET 설정 필요
 cp .env.sample .env
 
-# 서버 실행 (기본: http://localhost:8000)
-uv run uvicorn app.main:app --reload
+# 서버 실행 (기본: http://localhost:9944)
+uv run python -m app.main
 ```
 
 ### 3. CLI 설정 및 사용
