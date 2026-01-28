@@ -59,7 +59,7 @@ watcher-engine/
 │   └── kis/                  # 한국투자증권 API
 │       └── client.py
 ├── loaders/                  # 데이터 로더
-│   └── stock_parser.py       # 종목 파일 파서
+│   └── stock_parser.py       # 종목 파일 파서 (KOSPI/KOSDAQ/US)
 └── data/                     # SQLite DB 저장소
     └── stocks.db
 ```
@@ -74,6 +74,8 @@ GET /health
 ```
 
 ### 종목 API
+
+`market` 파라미터는 `KOSPI`, `KOSDAQ`, `US` 중 하나를 사용합니다.
 
 | Method | Endpoint | 설명 |
 |--------|----------|------|
@@ -108,6 +110,9 @@ GET /health
 ```bash
 # 종목 목록 (KOSPI, 10개)
 curl "http://localhost:9944/stocks?market=KOSPI&limit=10"
+
+# 종목 목록 (US, 10개)
+curl "http://localhost:9944/stocks?market=US&limit=10"
 
 # 종목 검색
 curl "http://localhost:9944/stocks/search?q=삼성"
@@ -174,8 +179,8 @@ SQLite를 사용하며, `data/stocks.db`에 저장됩니다.
 | code | TEXT | 종목 코드 (UNIQUE) |
 | standard_code | TEXT | 표준 코드 |
 | name | TEXT | 종목명 |
-| market | TEXT | 시장 (KOSPI/KOSDAQ) |
-| exchange | TEXT | 대표 거래소 (KRX/NXT) |
+| market | TEXT | 시장 (KOSPI/KOSDAQ/US) |
+| exchange | TEXT | 대표 거래소 (KRX/NXT/US) |
 
 ### StockListings 테이블
 
@@ -185,7 +190,7 @@ SQLite를 사용하며, `data/stocks.db`에 저장됩니다.
 |------|------|------|
 | id | INTEGER | Primary Key |
 | stock_code | TEXT | 종목 코드 |
-| exchange | TEXT | 거래소 (KRX/NXT) |
+| exchange | TEXT | 거래소 (KRX/NXT/US) |
 | is_primary | INTEGER | 대표 거래소 여부 |
 
 ## ⏰ 거래 시간 정보 (NXT)

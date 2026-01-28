@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.services.stock_current_price_service import StockCurrentPriceService
 from app.services.stock_price_service import StockPriceService
 from app.services.stock_service import StockService
+from app.services.oversea_stock_price_service import OverseaStockPriceService
 from external.client import APIError
 
 
@@ -174,3 +175,61 @@ async def load_stocks():
         "message": "종목 데이터 로드 완료",
         **result,
     }
+
+
+@router.get("/overseas/{exchange}/{symbol}/prices/current")
+async def get_overseas_current_price(
+    exchange: str,
+    symbol: str,
+):
+    """
+    해외주식 현재가상세 조회
+
+    - **exchange**: 거래소 코드 (NAS: 나스닥, NYS: 뉴욕)
+    - **symbol**: 종목코드 (예: TSLA, AAPL, NVDA)
+    """
+    service = OverseaStockPriceService()
+    try:
+        return await service.get_current_price(
+            symbol=symbol,
+            exchange=exchange,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except APIError as exc:
+        detail = {"message": str(exc), "response": exc.response}
+        raise HTTPException(status_code=502, detail=detail) from exc
+
+
+@router.get("/overseas/{symbol}/prices/periodic")
+async def get_overseas_periodic_prices(
+    symbol: str,
+    start_date: str = Query(..., description="조회 시작일 (YYYYMMDD 또는 YYYY-MM-DD)"),
+    end_date: str = Query(..., description="조회 종료일 (YYYYMMDD 또는 YYYY-MM-DD)"),
+    period: str = Query("D", description="기간 구분 (D/W/M/Y)"),
+    market_code: str = Query("N", description="시장 구분 (N: 지수, X: 환율, I: 국채, S: 금선물)"),
+):
+    """
+    해외 종목/지수/환율 기간별 시세 조회
+
+    - **symbol**: 종목/지수 코드 (예: .DJI, .IXIC, FX@KRW)
+    - **start_date**: 조회 시작일 (YYYYMMDD)
+    - **end_date**: 조회 종료일 (YYYYMMDD)
+    - **period**: D(일)/W(주)/M(월)/Y(년)
+    - **market_code**: N(지수)/X(환율)/I(국채)/S(금선물)
+    """
+    service = OverseaStockPriceService()
+    try:
+        return await service.get_periodic_prices(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            period=period,
+            market_code=market_code,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except APIError as exc:
+        detail = {"message": str(exc), "response": exc.response}
+        raise HTTPException(status_code=502, detail=detail) from exc
+

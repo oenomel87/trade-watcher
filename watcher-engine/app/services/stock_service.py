@@ -59,8 +59,13 @@ class StockService:
                 "by_market": {},
             }
 
-            for market in ["KOSPI", "KOSDAQ"]:
-                for exchange in ["KRX", "NXT"]:
+            market_exchanges = {
+                "KOSPI": ["KRX", "NXT"],
+                "KOSDAQ": ["KRX", "NXT"],
+                "US": ["US"],
+            }
+            for market, exchanges in market_exchanges.items():
+                for exchange in exchanges:
                     cnt = db.get_stock_count(market=market, exchange=exchange)
                     result["by_market"][f"{market}_{exchange}"] = cnt
 
@@ -168,10 +173,10 @@ class StockService:
                 "by_market": {},
             }
 
-            for market in ["KOSPI", "KOSDAQ"]:
+            for market in ["KOSPI", "KOSDAQ", "US"]:
                 result["by_market"][market] = db.get_stock_count(market=market)
 
-            for exchange in ["KRX", "NXT"]:
+            for exchange in ["KRX", "NXT", "US"]:
                 result["by_market"][exchange] = db.get_stock_count(exchange=exchange)
 
         return result

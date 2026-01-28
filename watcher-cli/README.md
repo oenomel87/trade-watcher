@@ -55,6 +55,11 @@ uv run python main.py watchlists --search 관심
 
 # 종목 검색
 uv run python main.py stocks --query 삼성
+uv run python main.py stocks --query AAPL --market US
+
+# 종목 목록 (시장/거래소 필터)
+uv run python main.py stocks --market US --limit 10
+uv run python main.py stocks --market KOSPI --exchange KRX --limit 10
 
 # KRX/NXT 통합 시세 조회
 uv run python main.py prices 005930
@@ -155,3 +160,7 @@ Example config:
   "default_watchlist_id": null
 }
 ```
+
+참고:
+- `stocks` 명령의 `--market` 값은 `KOSPI/KOSDAQ/US` 중 하나를 사용합니다.
+- 설정값 `market`은 시세 조회용 코드 `J/NX/UN`이며, 종목 목록 필터와는 별개입니다.

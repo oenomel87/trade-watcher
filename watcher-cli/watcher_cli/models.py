@@ -47,6 +47,8 @@ class WatchlistItemSummary(BaseModel):
     folder_id: int | None = None
     stock_code: str
     memo: str | None = None
+    market: str | None = None
+    exchange: str | None = None
     current_price: str | None = None
     volume: str | None = None
     change: str | None = None
@@ -166,4 +168,3 @@ class CombinedPriceResponse(BaseModel):
     active_exchanges: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="ignore")
-

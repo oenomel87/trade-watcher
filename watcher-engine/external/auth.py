@@ -4,6 +4,7 @@
 한국투자증권 API 접근 토큰 발급 및 관리를 담당합니다.
 """
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -49,12 +50,14 @@ class TokenManager:
         self.base_url = base_url.rstrip("/")
         self._token_info: TokenInfo | None = None
         self._storage = Database()
+        self._lock = asyncio.Lock()
 
     async def get_token(self) -> str:
         """
         접근 토큰 반환
 
         캐싱된 토큰이 유효하면 반환, 아니면 새로 발급합니다.
+        asyncio.Lock을 사용하여 동시에 여러 태스크가 토큰을 갱신하는 것을 방지합니다.
 
         Returns:
             str: 접근 토큰
@@ -62,13 +65,14 @@ class TokenManager:
         Raises:
             TokenError: 토큰 발급 실패 시
         """
-        if self._token_info is None:
-            self._token_info = self._load_token_from_storage()
+        async with self._lock:
+            if self._token_info is None:
+                self._token_info = self._load_token_from_storage()
 
-        if self._token_info is None or self._token_info.is_expired:
-            await self._refresh_token()
+            if self._token_info is None or self._token_info.is_expired:
+                await self._refresh_token()
 
-        return self._token_info.access_token
+            return self._token_info.access_token
 
     async def _refresh_token(self) -> None:
         """토큰 새로 발급"""

@@ -182,6 +182,22 @@ class EngineClient:
         items = payload.get("stocks", []) if isinstance(payload, dict) else []
         return [Stock.model_validate(item) for item in items]
 
+    async def list_stocks(
+        self,
+        market: str | None = None,
+        exchange: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Stock]:
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if market:
+            params["market"] = market
+        if exchange:
+            params["exchange"] = exchange
+        payload = await self._request("GET", "/stocks", params=params)
+        items = payload.get("stocks", []) if isinstance(payload, dict) else []
+        return [Stock.model_validate(item) for item in items]
+
     async def get_stock(self, code: str) -> Stock:
         payload = await self._request("GET", f"/stocks/{code}")
         return Stock.model_validate(payload)
@@ -236,6 +252,39 @@ class EngineClient:
 
         payload = await self._request("GET", f"/stocks/{code}/prices/combined", params=params)
         return CombinedPriceResponse.model_validate(payload)
+
+    async def get_overseas_current_price(
+        self,
+        exchange: str,
+        symbol: str,
+    ) -> dict[str, Any]:
+        """해외주식 현재가상세 조회."""
+        payload = await self._request(
+            "GET",
+            f"/stocks/overseas/{exchange}/{symbol}/prices/current",
+        )
+        return payload
+
+    async def get_overseas_periodic_prices(
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        period: str = "D",
+        market_code: str = "N",
+    ) -> dict[str, Any]:
+        """해외 종목/지수/환율 기간별 시세 조회."""
+        payload = await self._request(
+            "GET",
+            f"/stocks/overseas/{symbol}/prices/periodic",
+            params={
+                "start_date": start_date,
+                "end_date": end_date,
+                "period": period,
+                "market_code": market_code,
+            },
+        )
+        return payload
 
     async def _request(
         self,

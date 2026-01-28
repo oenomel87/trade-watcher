@@ -3,6 +3,8 @@
 from pathlib import Path
 import sys
 
+import pytest
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT_DIR))
 
@@ -38,7 +40,8 @@ def test_watchlist_flow():
     assert len(items) == 0
 
 
-def test_watchlist_summary_cache():
+@pytest.mark.asyncio
+async def test_watchlist_summary_cache():
     db = Database(":memory:")
     service = WatchListService(db=db)
     watchlist = service.create_watchlist("관심종목", "요약 테스트")
@@ -50,7 +53,7 @@ def test_watchlist_summary_cache():
         price_json='{"stck_prpr":"71000","acml_vol":"1000","prdy_vrss":"500","prdy_ctrt":"0.70"}',
     )
 
-    items = service.list_items_with_price(
+    items = await service.list_items_with_price(
         watchlist_id=watchlist["id"],
         use_cache=True,
         refresh_missing=False,
@@ -61,3 +64,4 @@ def test_watchlist_summary_cache():
     assert items[0]["current_price"] == "71000"
     assert items[0]["volume"] == "1000"
     assert items[0]["change"] == "500"
+

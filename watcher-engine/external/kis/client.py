@@ -143,6 +143,78 @@ class KISClient(BaseAPIClient):
             extra_headers=extra_headers,
         )
 
+    async def get_overseas_price(
+        self,
+        exchange: str,
+        symbol: str,
+        custtype: str = "P",
+    ) -> dict[str, Any]:
+        """해외주식 현재가상세 조회.
+
+        Args:
+            exchange: 거래소 코드 (NAS: 나스닥, NYS: 뉴욕)
+            symbol: 종목코드 (예: TSLA, AAPL)
+            custtype: 고객 타입 (P: 개인, B: 법인)
+
+        Returns:
+            dict: 해외주식 현재가 상세 정보
+        """
+        params = {
+            "AUTH": "",
+            "EXCD": exchange,
+            "SYMB": symbol,
+        }
+        extra_headers = {
+            "content-type": "application/json; charset=utf-8",
+            "custtype": custtype,
+        }
+        return await self.get(
+            endpoint="/uapi/overseas-price/v1/quotations/price-detail",
+            tr_id="HHDFS76200200",
+            params=params,
+            extra_headers=extra_headers,
+        )
+
+    async def get_overseas_periodic_prices(
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        period: str = "D",
+        market_code: str = "N",
+        custtype: str = "P",
+    ) -> dict[str, Any]:
+        """해외주식 종목/지수/환율 기간별 시세 조회.
+
+        Args:
+            symbol: 종목/지수 코드 (예: .DJI, .IXIC, AAPL)
+            start_date: 조회 시작일 (YYYYMMDD)
+            end_date: 조회 종료일 (YYYYMMDD)
+            period: 기간 구분 (D: 일, W: 주, M: 월, Y: 년)
+            market_code: 시장 구분 (N: 해외지수, X: 환율, I: 국채, S: 금선물)
+            custtype: 고객 타입 (P: 개인, B: 법인)
+
+        Returns:
+            dict: 기간별 시세 정보
+        """
+        params = {
+            "FID_COND_MRKT_DIV_CODE": market_code,
+            "FID_INPUT_ISCD": symbol,
+            "FID_INPUT_DATE_1": start_date,
+            "FID_INPUT_DATE_2": end_date,
+            "FID_PERIOD_DIV_CODE": period,
+        }
+        extra_headers = {
+            "content-type": "application/json; charset=utf-8",
+            "custtype": custtype,
+        }
+        return await self.get(
+            endpoint="/uapi/overseas-price/v1/quotations/inquire-daily-chartprice",
+            tr_id="FHKST03030100",
+            params=params,
+            extra_headers=extra_headers,
+        )
+
     async def post(
         self,
         endpoint: str,

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 
 from db import Database
 from app.services.stock_current_price_service import StockCurrentPriceService
+from app.services.oversea_stock_price_service import OverseaStockPriceService
 
 
 class WatchListService:
@@ -312,8 +314,70 @@ class WatchListService:
         """
         items = self.list_items(watchlist_id, folder_id)
         price_service = StockCurrentPriceService(db=self.db)
+        overseas_service = OverseaStockPriceService()
+        stock_meta_by_code = self._get_stock_meta_map([item["stock_code"] for item in items])
+
+        def _map_overseas_payload(payload: dict) -> dict:
+            price = payload.get("price", {}) if isinstance(payload, dict) else {}
+            change = payload.get("change", {}) if isinstance(payload, dict) else {}
+            volume = payload.get("volume", {}) if isinstance(payload, dict) else {}
+            return {
+                "current_price": price.get("last"),
+                "volume": volume.get("current"),
+                "change": change.get("diff"),
+                "change_rate": change.get("rate"),
+            }
+
+        async def fetch_overseas_price(item: dict, meta: dict) -> dict:
+            exchange = self._resolve_overseas_exchange(meta)
+            market_key = exchange or "US"
+            price_payload = {}
+            source = None
+
+            if use_cache:
+                cached = self.db.get_current_price(item["stock_code"], market_key)
+                if cached:
+                    cached_payload = price_service._parse_price_json(cached.get("price_json"))
+                    if cached_payload and price_service._is_cache_valid(
+                        cached.get("updated_at"), max_age_sec
+                    ):
+                        price_payload = cached_payload
+                        source = "db"
+
+            if refresh_missing and not price_payload:
+                if not exchange:
+                    source = "error"
+                else:
+                    try:
+                        live = await overseas_service.get_current_price(
+                            symbol=item["stock_code"],
+                            exchange=exchange,
+                        )
+                        price_payload = live if isinstance(live, dict) else {}
+                        source = "kis"
+                        if price_payload:
+                            self.db.upsert_current_price(
+                                stock_code=item["stock_code"],
+                                market=market_key,
+                                price_json=json.dumps(price_payload, ensure_ascii=True),
+                            )
+                    except Exception:
+                        price_payload = {}
+                        source = "error"
+
+            return {
+                **item,
+                "market": meta.get("market"),
+                "exchange": meta.get("exchange"),
+                "price_source": source,
+                **_map_overseas_payload(price_payload),
+            }
 
         async def fetch_item_price(item: dict) -> dict:
+            meta = stock_meta_by_code.get(item["stock_code"], {})
+            if (meta.get("market") or "").upper() == "US":
+                return await fetch_overseas_price(item, meta)
+
             price_payload = {}
             source = None
             nxt_price_payload = {}
@@ -377,6 +441,8 @@ class WatchListService:
 
             result_item = {
                 **item,
+                "market": meta.get("market"),
+                "exchange": meta.get("exchange"),
                 "price_source": source,
                 "current_price": price_payload.get("stck_prpr"),
                 "volume": price_payload.get("acml_vol"),
@@ -396,6 +462,45 @@ class WatchListService:
         # 모든 종목 동시 조회
         results = await asyncio.gather(*[fetch_item_price(item) for item in items])
         return list(results)
+
+    def _get_stock_meta_map(self, codes: list[str]) -> dict[str, dict]:
+        if not codes:
+            return {}
+        conn = self.db.connect()
+        placeholders = ",".join("?" for _ in codes)
+        cursor = conn.execute(
+            f"""
+            SELECT code, standard_code, name, market, exchange
+            FROM stocks
+            WHERE code IN ({placeholders})
+            """,
+            codes,
+        )
+        rows = cursor.fetchall()
+        return {
+            row["code"]: {
+                "code": row["code"],
+                "standard_code": row["standard_code"],
+                "name": row["name"],
+                "market": row["market"],
+                "exchange": row["exchange"],
+            }
+            for row in rows
+        }
+
+    @staticmethod
+    def _resolve_overseas_exchange(meta: dict) -> str | None:
+        exchange = (meta.get("exchange") or "").upper()
+        if exchange in OverseaStockPriceService.VALID_EXCHANGES:
+            return exchange
+
+        standard_code = (meta.get("standard_code") or "").upper()
+        if len(standard_code) >= 3:
+            prefix = standard_code[:3]
+            if prefix in OverseaStockPriceService.VALID_EXCHANGES:
+                return prefix
+
+        return None
 
     def _create_default_folder(self, watchlist_id: int) -> dict:
         conn = self.db.connect()

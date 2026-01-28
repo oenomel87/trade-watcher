@@ -4,11 +4,13 @@
 - `watcher-engine/`: FastAPI service, data loaders, and persistence.
   - `watcher-engine/app/`: API entrypoint and routers (`app/main.py`, `app/routers/`).
   - `watcher-engine/app/services/`: service layer for stocks and watchlists.
+  - `watcher-engine/core/`: shared configuration helpers and env loading.
   - `watcher-engine/external/`: Korea Investment & Securities (KIS) API client and auth.
   - `watcher-engine/db/`: SQLite models and database wiring.
   - `watcher-engine/loaders/`: data ingestion helpers.
   - `watcher-engine/tests/`: pytest suites (e.g., `test_*.py`).
-- `watcher-cli/`: CLI package scaffolding (`main.py`, `pyproject.toml`).
+  - `watcher-engine/data/`: local SQLite storage (`data/stocks.db`).
+- `watcher-cli/`: CLI package (`main.py`, `pyproject.toml`, `watcher_cli/`).
 - `docs/`: API notes, stock lists, and reference spreadsheets.
 
 ## Build, Test, and Development Commands
@@ -17,6 +19,8 @@ Run commands from the relevant subproject directory.
 - `cd watcher-engine && uv run uvicorn app.main:app --reload`: start the API server with hot reload.
 - `cd watcher-engine && uv run pytest`: run tests in `watcher-engine/tests/`.
 - `cd watcher-engine && uv run python -m loaders.stock_parser <args>`: ingest stock data (adjust arguments per loader).
+- `cd watcher-cli && uv sync`: install CLI dependencies using uv.
+- `cd watcher-cli && uv run python main.py watchlists`: run the CLI (example command).
 
 ## Coding Style & Naming Conventions
 - Language: Python 3.13+.

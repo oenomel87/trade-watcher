@@ -52,6 +52,8 @@ def main() -> None:
             asyncio.run(_run_combined_price(args, config))
         elif args.command == "monitor":
             asyncio.run(_run_monitor(args, config))
+        elif args.command == "overseas":
+            asyncio.run(_run_overseas(args, config))
         elif args.command == "add":
             asyncio.run(_run_add_wizard(args, config))
         else:
@@ -89,7 +91,7 @@ def _build_parser() -> argparse.ArgumentParser:
     common_items.add_argument("-l", "--watchlist", help="관심목록 ID 또는 이름")
 
     items = subparsers.add_parser("items", help="관심목록 종목 목록 조회", parents=[common_items])
-    items.add_argument("--market", help="시장 코드 (기본값: 설정값)")
+    items.add_argument("--market", help="시장 코드 (J/NX/UN, 기본값: 설정값)")
     items.add_argument("--max-age-sec", type=int, help="캐시 허용 최대 경과초")
     items.add_argument("--no-cache", action="store_true", help="캐시 사용 안 함")
     items.add_argument(
@@ -110,9 +112,12 @@ def _build_parser() -> argparse.ArgumentParser:
     items_delete.add_argument("--item-id", type=int, help="항목 ID")
     items_delete.add_argument("--stock-code", help="종목 코드(선택)")
 
-    stocks = subparsers.add_parser("stocks", help="종목 검색")
-    stocks.add_argument("-q", "--query", required=True, help="검색어(종목명 또는 코드)")
-    stocks.add_argument("--limit", type=int, help="검색 개수 (기본값: 20)")
+    stocks = subparsers.add_parser("stocks", help="종목 검색/목록")
+    stocks.add_argument("-q", "--query", help="검색어(종목명 또는 코드)")
+    stocks.add_argument("--market", help="시장 필터 (KOSPI/KOSDAQ/US)")
+    stocks.add_argument("--exchange", help="거래소 필터 (KRX/NXT/US)")
+    stocks.add_argument("--limit", type=int, help="조회 개수 (검색: 기본값 20, 목록: 기본값 100)")
+    stocks.add_argument("--offset", type=int, help="목록 조회 시작 위치 (기본값: 0)")
 
     prices = subparsers.add_parser("prices", help="종목 시세 조회")
     prices.add_argument("stock_code", help="종목 코드")
@@ -125,6 +130,17 @@ def _build_parser() -> argparse.ArgumentParser:
     monitor.add_argument("--interval", type=float, help="갱신 주기(초)")
     monitor.add_argument("--include-nxt", action="store_true", help="NXT 시세 함께 조회")
 
+    overseas = subparsers.add_parser("overseas", help="해외주식/지수 시세 조회")
+    overseas.add_argument("symbol", help="종목/지수 코드 (예: TSLA, .DJI)")
+    overseas.add_argument("--exchange", "-e", default="NAS", help="거래소 코드 (NAS/NYS, 기본값: NAS)")
+    overseas.add_argument("--periodic", action="store_true", help="기간별 시세 조회")
+    overseas.add_argument("--start-date", help="조회 시작일 (YYYYMMDD)")
+    overseas.add_argument("--end-date", help="조회 종료일 (YYYYMMDD)")
+    overseas.add_argument("--period", default="D", help="기간 구분 (D/W/M/Y, 기본값: D)")
+    overseas.add_argument("--market-code", default="N", help="시장 구분 (N:지수/X:환율/I:국채/S:금선물, 기본값: N)")
+    overseas.add_argument("-w", "--watch", action="store_true", help="주기적으로 새로 고침")
+    overseas.add_argument("--interval", type=float, help="갱신 주기(초)")
+
     add_wizard = subparsers.add_parser("add", help="대화형 종목 추가 마법사")
 
     parser._watcher_subparsers = {  # type: ignore[attr-defined]
@@ -134,6 +150,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "stocks": stocks,
         "prices": prices,
         "monitor": monitor,
+        "overseas": overseas,
         "add": add_wizard,
     }
 
@@ -314,14 +331,38 @@ async def _run_item_delete(args: argparse.Namespace, config: CliConfig) -> None:
 
 async def _run_stock_search(args: argparse.Namespace, config: CliConfig) -> None:
     async with EngineClient(config.engine_url) as client:
-        try:
-            results = await client.search_stocks(args.query, limit=args.limit or 20)
-        except EngineAPIError as exc:
-            _print_error(f"종목 검색에 실패했습니다: {exc.message}")
-            return
+        if args.query:
+            try:
+                results = await client.search_stocks(args.query, limit=args.limit or 20)
+            except EngineAPIError as exc:
+                _print_error(f"종목 검색에 실패했습니다: {exc.message}")
+                return
+        else:
+            try:
+                results = await client.list_stocks(
+                    market=args.market,
+                    exchange=args.exchange,
+                    limit=args.limit or 100,
+                    offset=args.offset or 0,
+                )
+            except EngineAPIError as exc:
+                _print_error(f"종목 목록 조회에 실패했습니다: {exc.message}")
+                return
+
+        if args.query:
+            if args.market:
+                results = [
+                    stock for stock in results
+                    if (stock.market or "").upper() == args.market.upper()
+                ]
+            if args.exchange:
+                results = [
+                    stock for stock in results
+                    if (stock.exchange or "").upper() == args.exchange.upper()
+                ]
 
         if not results:
-            print("검색 결과가 없습니다.")
+            print("검색 결과가 없습니다." if args.query else "표시할 종목이 없습니다.")
             return
 
         rows = [
@@ -428,6 +469,57 @@ async def _run_monitor(args: argparse.Namespace, config: CliConfig) -> None:
         except KeyboardInterrupt:
             print("\n중단되었습니다.")
 
+
+
+async def _run_overseas(args: argparse.Namespace, config: CliConfig) -> None:
+    """해외주식/지수 시세 조회."""
+    async with EngineClient(config.engine_url) as client:
+        interval = args.interval or config.refresh_interval_sec
+        symbol = args.symbol.upper()
+
+        if args.periodic:
+            # 기간별 시세 조회
+            if not args.start_date or not args.end_date:
+                _print_error("기간별 조회는 --start-date와 --end-date가 필요합니다.")
+                return
+
+            async def render_periodic() -> None:
+                try:
+                    result = await client.get_overseas_periodic_prices(
+                        symbol=symbol,
+                        start_date=args.start_date,
+                        end_date=args.end_date,
+                        period=args.period,
+                        market_code=args.market_code,
+                    )
+                except EngineAPIError as exc:
+                    _print_error(f"기간별 시세 조회에 실패했습니다: {exc.message}")
+                    return
+
+                _print_overseas_periodic(result)
+
+            if args.watch:
+                await _watch_loop(render_periodic, interval, title=f"[{symbol}] 기간별 시세")
+            else:
+                await render_periodic()
+        else:
+            # 현재가 조회
+            async def render_current() -> None:
+                try:
+                    result = await client.get_overseas_current_price(
+                        exchange=args.exchange.upper(),
+                        symbol=symbol,
+                    )
+                except EngineAPIError as exc:
+                    _print_error(f"현재가 조회에 실패했습니다: {exc.message}")
+                    return
+
+                _print_overseas_current(result)
+
+            if args.watch:
+                await _watch_loop(render_current, interval, title=f"[{args.exchange.upper()}:{symbol}] 현재가")
+            else:
+                await render_current()
 
 
 async def _run_add_wizard(args: argparse.Namespace, config: CliConfig) -> None:
@@ -649,11 +741,14 @@ def _print_item_table(
     rows: list[list[str]] = []
     for item in items:
         name = name_cache.get(item.stock_code) or item.memo or ""
+        is_us = (item.market or "").upper() == "US"
+        price_text = _format_price(item.current_price) if is_us else _format_number(item.current_price)
+        change_text = _format_signed_price(item.change) if is_us else _format_signed(item.change)
         row = [
             item.stock_code,
             name,
-            _format_number(item.current_price),
-            _format_signed(item.change),
+            price_text,
+            change_text,
             _format_rate(item.change_rate),
             _format_number(item.volume),
             item.price_source or "",
@@ -710,6 +805,107 @@ def _print_combined_price(result: Any, name: str) -> None:
         ])
 
     _print_table(["거래소", "현재가", "전일대비", "거래량", "거래대금"], rows)
+
+
+def _print_overseas_current(result: dict) -> None:
+    """해외주식 현재가 출력."""
+    symbol = result.get("symbol", "")
+    exchange = result.get("exchange", "")
+    price = result.get("price", {})
+    change = result.get("change", {})
+    indicators = result.get("indicators", {})
+    volume = result.get("volume", {})
+    currency = result.get("currency", "")
+
+    print(f"종목: {symbol} ({exchange})")
+    print("-" * 40)
+    
+    # 현재가 정보
+    print(f"현재가: {_format_price(price.get('last'))} {currency}")
+    print(f"전일종가: {_format_price(price.get('base'))} {currency}")
+    print(f"등락: {_format_signed_price(change.get('diff'))} ({_format_rate(change.get('rate'))})")
+    print("-" * 40)
+    
+    # 시고저
+    print(f"시가: {_format_price(price.get('open'))}")
+    print(f"고가: {_format_price(price.get('high'))}")
+    print(f"저가: {_format_price(price.get('low'))}")
+    print("-" * 40)
+    
+    # 거래량
+    print(f"거래량: {_format_number(volume.get('current'))}")
+    print(f"거래대금: {_format_number(volume.get('amount'))}")
+    print("-" * 40)
+    
+    # 투자지표
+    if any([indicators.get("per"), indicators.get("pbr")]):
+        print(f"PER: {indicators.get('per') or '-'}")
+        print(f"PBR: {indicators.get('pbr') or '-'}")
+
+
+def _print_overseas_periodic(result: dict) -> None:
+    """해외 기간별 시세 출력."""
+    symbol = result.get("symbol", "")
+    name = result.get("name", "")
+    current = result.get("current", {})
+    prices = result.get("prices", [])
+    count = result.get("count", 0)
+
+    print(f"종목: {name or symbol}")
+    print("-" * 50)
+    
+    # 현재 정보
+    if current:
+        sign = current.get("change_sign", "")
+        sign_label = {"1": "▲", "2": "▲", "3": "=", "4": "▼", "5": "▼"}.get(sign, "")
+        print(f"현재가: {_format_price(current.get('price'))} {sign_label}")
+        print(f"전일비: {_format_signed_price(current.get('change'))} ({current.get('change_rate') or '-'}%)")
+        print("-" * 50)
+
+    # 일자별 시세 테이블
+    if prices:
+        headers = ["일자", "종가", "시가", "고가", "저가", "거래량"]
+        rows = []
+        for p in prices[:20]:  # 최대 20개만 표시
+            rows.append([
+                p.get("date", "-"),
+                _format_price(p.get("close")),
+                _format_price(p.get("open")),
+                _format_price(p.get("high")),
+                _format_price(p.get("low")),
+                _format_number(p.get("volume")),
+            ])
+        _print_table(headers, rows)
+        if count > 20:
+            print(f"... 외 {count - 20}개")
+    else:
+        print("조회된 데이터가 없습니다.")
+
+
+def _format_price(value: str | None) -> str:
+    """가격 포맷 (소수점 유지)."""
+    if value is None or value == "":
+        return "-"
+    try:
+        f = float(value)
+        if f == int(f):
+            return f"{int(f):,}"
+        return f"{f:,.4f}".rstrip("0").rstrip(".")
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _format_signed_price(value: str | None) -> str:
+    """부호 포함 가격 포맷."""
+    if value is None or value == "":
+        return "-"
+    try:
+        f = float(value)
+        if f >= 0:
+            return f"+{_format_price(str(f))}"
+        return f"{_format_price(str(f))}"
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def _print_table(headers: list[str], rows: list[list[str]]) -> None:
@@ -842,6 +1038,7 @@ def _print_help(parser: argparse.ArgumentParser, topic: str | None) -> None:
         print("  watcher watchlists --search 관심")
         print("  watcher items --watchlist 1")
         print("  watcher items --watchlist 1 -w --interval 2")
+        print("  watcher stocks --market US --limit 10")
         return
 
     subparser = subparsers.get(topic)
