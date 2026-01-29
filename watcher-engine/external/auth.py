@@ -51,6 +51,7 @@ class TokenManager:
         self._token_info: TokenInfo | None = None
         self._storage = Database()
         self._lock = asyncio.Lock()
+        self._refresh_task: asyncio.Task | None = None
 
     async def get_token(self) -> str:
         """
@@ -65,14 +66,36 @@ class TokenManager:
         Raises:
             TokenError: 토큰 발급 실패 시
         """
+        refresh_task: asyncio.Task | None = None
+
         async with self._lock:
             if self._token_info is None:
                 self._token_info = self._load_token_from_storage()
 
             if self._token_info is None or self._token_info.is_expired:
-                await self._refresh_token()
+                refresh_task = self._refresh_task
+                if refresh_task is None or refresh_task.done():
+                    refresh_task = asyncio.create_task(self._refresh_token_task())
+                    self._refresh_task = refresh_task
+            else:
+                return self._token_info.access_token
 
+        if refresh_task is not None:
+            await refresh_task
+
+        async with self._lock:
+            if self._token_info is None:
+                raise TokenError("토큰 발급 실패: 토큰 정보를 확인할 수 없습니다.")
             return self._token_info.access_token
+
+    async def _refresh_token_task(self) -> None:
+        """중복 갱신을 피하기 위한 단일 Task 래퍼."""
+        try:
+            await self._refresh_token()
+        finally:
+            async with self._lock:
+                if self._refresh_task is asyncio.current_task():
+                    self._refresh_task = None
 
     async def _refresh_token(self) -> None:
         """토큰 새로 발급"""
