@@ -23,12 +23,21 @@ class KISClient(BaseAPIClient):
         Args:
             config: 한국투자증권 API 설정
         """
-        super().__init__(base_url=config.base_url)
+        super().__init__(
+            base_url=config.base_url,
+            timeout=config.kis_timeout_sec,
+            max_concurrency=config.kis_max_concurrency,
+            max_retries=config.kis_max_retries,
+            retry_backoff_sec=config.kis_retry_backoff_sec,
+        )
         self.config = config
         self.token_manager = TokenManager(
             app_key=config.app_key,
             app_secret=config.app_secret,
             base_url=config.base_url,
+            timeout=config.kis_timeout_sec,
+            max_retries=config.kis_max_retries,
+            retry_backoff_sec=config.kis_retry_backoff_sec,
         )
 
     async def _get_auth_headers(self, tr_id: str | None = None) -> dict[str, str]:

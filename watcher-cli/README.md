@@ -154,7 +154,7 @@ Example config:
 ```json
 {
   "engine_url": "http://localhost:9944",
-  "refresh_interval_sec": 2,
+  "refresh_interval_sec": 5,
   "summary_cache_age_sec": 60,
   "market": "J",
   "default_watchlist_id": null

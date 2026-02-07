@@ -26,6 +26,14 @@ class EngineAPIError(Exception):
     message: str
     status_code: int | None = None
     response: Any | None = None
+    method: str | None = None
+    path: str | None = None
+    params: dict[str, Any] | None = None
+    json: dict[str, Any] | None = None
+    base_url: str | None = None
+    error_type: str | None = None
+    detail: str | None = None
+    request_id: str | None = None
 
     def __str__(self) -> str:  # pragma: no cover - trivial
         parts = [self.message]
@@ -296,13 +304,30 @@ class EngineClient:
         try:
             response = await self._client.request(method, path, params=params, json=json)
         except httpx.HTTPError as exc:
-            raise EngineAPIError("요청에 실패했습니다", response=str(exc)) from exc
+            raise EngineAPIError(
+                "요청에 실패했습니다",
+                response=str(exc),
+                method=method,
+                path=path,
+                params=params,
+                json=json,
+                base_url=self.base_url,
+                error_type=exc.__class__.__name__,
+                detail=str(exc),
+            ) from exc
 
         if response.status_code >= 400:
+            request_id = response.headers.get("x-request-id")
             raise EngineAPIError(
                 "엔진 응답 오류",
                 status_code=response.status_code,
                 response=_safe_json(response),
+                method=method,
+                path=path,
+                params=params,
+                json=json,
+                base_url=self.base_url,
+                request_id=request_id,
             )
 
         if response.status_code == 204:

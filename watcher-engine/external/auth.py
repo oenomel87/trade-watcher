@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import httpx
 
 from db import Database
+from external.client import RETRY_STATUS_CODES, is_retryable_request_error
 
 
 @dataclass
@@ -38,16 +39,30 @@ class TokenManager:
 
     TOKEN_ENDPOINT = "/oauth2/tokenP"
 
-    def __init__(self, app_key: str, app_secret: str, base_url: str):
+    def __init__(
+        self,
+        app_key: str,
+        app_secret: str,
+        base_url: str,
+        timeout: float = 30.0,
+        max_retries: int = 0,
+        retry_backoff_sec: float = 0.0,
+    ):
         """
         Args:
             app_key: 한국투자증권 앱키
             app_secret: 한국투자증권 앱시크릿
             base_url: API 기본 URL
+            timeout: 요청 타임아웃 (초)
+            max_retries: 토큰 요청 재시도 횟수
+            retry_backoff_sec: 재시도 기본 대기 시간(초)
         """
         self.app_key = app_key
         self.app_secret = app_secret
         self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.retry_backoff_sec = retry_backoff_sec
         self._token_info: TokenInfo | None = None
         self._storage = Database()
         self._lock = asyncio.Lock()
@@ -107,15 +122,23 @@ class TokenManager:
             "appsecret": self.app_secret,
         }
 
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(url, json=data)
-                response.raise_for_status()
-                result = response.json()
-        except httpx.RequestError as e:
-            raise TokenError(f"토큰 발급 요청 실패: {e}") from e
-        except httpx.HTTPStatusError as e:
-            raise TokenError(f"토큰 발급 실패: {e.response.status_code}") from e
+        attempt = 0
+        while True:
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(url, json=data)
+                    response.raise_for_status()
+                    result = response.json()
+                break
+            except httpx.RequestError as exc:
+                if attempt >= self.max_retries or not is_retryable_request_error(exc):
+                    raise TokenError(f"토큰 발급 요청 실패: {exc}") from exc
+            except httpx.HTTPStatusError as exc:
+                status_code = exc.response.status_code
+                if attempt >= self.max_retries or status_code not in RETRY_STATUS_CODES:
+                    raise TokenError(f"토큰 발급 실패: {status_code}") from exc
+            await self._sleep_backoff(attempt)
+            attempt += 1
 
         # 응답 검증
         if "access_token" not in result:
@@ -138,6 +161,11 @@ class TokenManager:
             expired_at=expired_at,
         )
         self._save_token_to_storage(self._token_info)
+
+    async def _sleep_backoff(self, attempt: int) -> None:
+        delay = self.retry_backoff_sec * (2**attempt)
+        if delay > 0:
+            await asyncio.sleep(delay)
 
     def _load_token_from_storage(self) -> TokenInfo | None:
         """저장된 토큰을 조회하여 TokenInfo로 복원."""

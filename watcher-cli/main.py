@@ -5,6 +5,7 @@ import asyncio
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 import io
+import json
 import select
 import sys
 import termios
@@ -165,7 +166,7 @@ async def _run_watchlists(args: argparse.Namespace, config: CliConfig) -> None:
             try:
                 watchlists = await client.list_watchlists()
             except EngineAPIError as exc:
-                _print_error(f"관심목록 조회에 실패했습니다: {exc.message}")
+                _print_engine_error("관심목록 조회에 실패했습니다", exc)
                 return
 
             rows = _filter_watchlists(watchlists, args.search)
@@ -185,7 +186,7 @@ async def _run_items(args: argparse.Namespace, config: CliConfig) -> None:
         try:
             watchlist = await _resolve_watchlist(client, args.watchlist, config.default_watchlist_id)
         except EngineAPIError as exc:
-            _print_error(f"관심목록 조회에 실패했습니다: {exc.message}")
+            _print_engine_error("관심목록 조회에 실패했습니다", exc)
             return
         if watchlist is None:
             if args.watchlist is None and config.default_watchlist_id is None:
@@ -207,7 +208,7 @@ async def _run_items(args: argparse.Namespace, config: CliConfig) -> None:
                     include_nxt=args.include_nxt,
                 )
             except EngineAPIError as exc:
-                _print_error(f"종목 조회에 실패했습니다: {exc.message}")
+                _print_engine_error("종목 조회에 실패했습니다", exc)
                 return
 
             await _fill_stock_names(client, items, name_cache)
@@ -227,7 +228,7 @@ async def _run_watchlist_create(args: argparse.Namespace, config: CliConfig) -> 
                 description=args.description,
             )
         except EngineAPIError as exc:
-            _print_error(f"관심목록 생성에 실패했습니다: {exc.message}")
+            _print_engine_error("관심목록 생성에 실패했습니다", exc)
             return
 
         print(f"관심목록 생성 완료: {created.name} (ID: {created.id})")
@@ -238,7 +239,7 @@ async def _run_watchlist_delete(args: argparse.Namespace, config: CliConfig) -> 
         try:
             watchlist = await _resolve_watchlist(client, args.watchlist, config.default_watchlist_id)
         except EngineAPIError as exc:
-            _print_error(f"관심목록 조회에 실패했습니다: {exc.message}")
+            _print_engine_error("관심목록 조회에 실패했습니다", exc)
             return
 
         if watchlist is None:
@@ -248,7 +249,7 @@ async def _run_watchlist_delete(args: argparse.Namespace, config: CliConfig) -> 
         try:
             await client.delete_watchlist(watchlist.id)
         except EngineAPIError as exc:
-            _print_error(f"관심목록 삭제에 실패했습니다: {exc.message}")
+            _print_engine_error("관심목록 삭제에 실패했습니다", exc)
             return
 
         print(f"관심목록 삭제 완료: {watchlist.name} (ID: {watchlist.id})")
@@ -259,7 +260,7 @@ async def _run_item_add(args: argparse.Namespace, config: CliConfig) -> None:
         try:
             watchlist = await _resolve_watchlist(client, args.watchlist, config.default_watchlist_id)
         except EngineAPIError as exc:
-            _print_error(f"관심목록 조회에 실패했습니다: {exc.message}")
+            _print_engine_error("관심목록 조회에 실패했습니다", exc)
             return
         if watchlist is None:
             _print_error("관심목록을 찾을 수 없습니다.")
@@ -275,7 +276,7 @@ async def _run_item_add(args: argparse.Namespace, config: CliConfig) -> None:
                 memo=args.memo,
             )
         except EngineAPIError as exc:
-            _print_error(f"종목 추가에 실패했습니다: {exc.message}")
+            _print_engine_error("종목 추가에 실패했습니다", exc)
             return
 
         print(f"종목 추가 완료: {args.stock_code}")
@@ -286,7 +287,7 @@ async def _run_item_delete(args: argparse.Namespace, config: CliConfig) -> None:
         try:
             watchlist = await _resolve_watchlist(client, args.watchlist, config.default_watchlist_id)
         except EngineAPIError as exc:
-            _print_error(f"관심목록 조회에 실패했습니다: {exc.message}")
+            _print_engine_error("관심목록 조회에 실패했습니다", exc)
             return
         if watchlist is None:
             _print_error("관심목록을 찾을 수 없습니다.")
@@ -303,7 +304,7 @@ async def _run_item_delete(args: argparse.Namespace, config: CliConfig) -> None:
                     market=config.market,
                 )
             except EngineAPIError as exc:
-                _print_error(f"종목 조회에 실패했습니다: {exc.message}")
+                _print_engine_error("종목 조회에 실패했습니다", exc)
                 return
 
             matches = [item for item in items if item.stock_code == args.stock_code]
@@ -323,7 +324,7 @@ async def _run_item_delete(args: argparse.Namespace, config: CliConfig) -> None:
         try:
             await client.delete_item(watchlist.id, item_id)
         except EngineAPIError as exc:
-            _print_error(f"종목 삭제에 실패했습니다: {exc.message}")
+            _print_engine_error("종목 삭제에 실패했습니다", exc)
             return
 
         print(f"종목 삭제 완료: item_id={item_id}")
@@ -335,7 +336,7 @@ async def _run_stock_search(args: argparse.Namespace, config: CliConfig) -> None
             try:
                 results = await client.search_stocks(args.query, limit=args.limit or 20)
             except EngineAPIError as exc:
-                _print_error(f"종목 검색에 실패했습니다: {exc.message}")
+                _print_engine_error("종목 검색에 실패했습니다", exc)
                 return
         else:
             try:
@@ -346,7 +347,7 @@ async def _run_stock_search(args: argparse.Namespace, config: CliConfig) -> None
                     offset=args.offset or 0,
                 )
             except EngineAPIError as exc:
-                _print_error(f"종목 목록 조회에 실패했습니다: {exc.message}")
+                _print_engine_error("종목 목록 조회에 실패했습니다", exc)
                 return
 
         if args.query:
@@ -389,7 +390,7 @@ async def _run_combined_price(args: argparse.Namespace, config: CliConfig) -> No
                     use_cache=not args.no_cache,
                 )
             except EngineAPIError as exc:
-                _print_error(f"시세 조회에 실패했습니다: {exc.message}")
+                _print_engine_error("시세 조회에 실패했습니다", exc)
                 return
 
             _print_combined_price(result, name_cache.get(stock_code, "알 수 없음"))
@@ -409,7 +410,7 @@ async def _run_monitor(args: argparse.Namespace, config: CliConfig) -> None:
         try:
             watchlists = await client.list_watchlists()
         except EngineAPIError as exc:
-            _print_error(f"관심목록 조회에 실패했습니다: {exc.message}")
+            _print_engine_error("관심목록 조회에 실패했습니다", exc)
             return
 
         if not watchlists:
@@ -433,7 +434,7 @@ async def _run_monitor(args: argparse.Namespace, config: CliConfig) -> None:
                     include_nxt=include_nxt,
                 )
             except EngineAPIError as exc:
-                _print_error(f"종목 조회에 실패했습니다: {exc.message}")
+                _print_engine_error("종목 조회에 실패했습니다", exc)
                 return
 
             await _fill_stock_names(client, items, name_cache)
@@ -493,7 +494,7 @@ async def _run_overseas(args: argparse.Namespace, config: CliConfig) -> None:
                         market_code=args.market_code,
                     )
                 except EngineAPIError as exc:
-                    _print_error(f"기간별 시세 조회에 실패했습니다: {exc.message}")
+                    _print_engine_error("기간별 시세 조회에 실패했습니다", exc)
                     return
 
                 _print_overseas_periodic(result)
@@ -511,7 +512,7 @@ async def _run_overseas(args: argparse.Namespace, config: CliConfig) -> None:
                         symbol=symbol,
                     )
                 except EngineAPIError as exc:
-                    _print_error(f"현재가 조회에 실패했습니다: {exc.message}")
+                    _print_engine_error("현재가 조회에 실패했습니다", exc)
                     return
 
                 _print_overseas_current(result)
@@ -534,7 +535,7 @@ async def _run_add_wizard(args: argparse.Namespace, config: CliConfig) -> None:
         try:
             watchlists = await client.list_watchlists()
         except EngineAPIError as exc:
-            _print_error(f"관심목록 조회에 실패했습니다: {exc.message}")
+            _print_engine_error("관심목록 조회에 실패했습니다", exc)
             return
 
         if not watchlists:
@@ -566,7 +567,7 @@ async def _run_add_wizard(args: argparse.Namespace, config: CliConfig) -> None:
         try:
             stocks = await client.search_stocks(query, limit=10)
         except EngineAPIError as exc:
-            _print_error(f"종목 검색에 실패했습니다: {exc.message}")
+            _print_engine_error("종목 검색에 실패했습니다", exc)
             return
 
         if not stocks:
@@ -616,7 +617,7 @@ async def _run_add_wizard(args: argparse.Namespace, config: CliConfig) -> None:
                 memo=memo,
             )
         except EngineAPIError as exc:
-            _print_error(f"종목 추가에 실패했습니다: {exc.message}")
+            _print_engine_error("종목 추가에 실패했습니다", exc)
             return
 
         print(f"\n✓ 종목 추가 완료: {selected_stock.name} ({selected_stock.code})")
@@ -1024,10 +1025,54 @@ def _prompt_number(prompt: str, min_val: int, max_val: int) -> int | None:
         return None
 
 
+def _print_engine_error(message: str, exc: EngineAPIError) -> None:
+    _print_error(f"{message}: {exc.message}")
+    for detail in _format_engine_error_debug(exc):
+        print(f"  debug: {detail}", file=sys.stderr)
+
+
+def _format_engine_error_debug(exc: EngineAPIError) -> list[str]:
+    lines: list[str] = []
+    if exc.method and exc.path:
+        url = f"{exc.base_url}{exc.path}" if exc.base_url else exc.path
+        lines.append(f"request={exc.method} {url}")
+    if exc.params:
+        lines.append(f"params={_format_debug_value(exc.params)}")
+    if exc.json:
+        lines.append(f"json={_format_debug_value(exc.json)}")
+    if exc.status_code is not None:
+        lines.append(f"status={exc.status_code}")
+    if exc.request_id:
+        lines.append(f"request_id={exc.request_id}")
+    if exc.error_type or exc.detail:
+        detail = exc.detail or ""
+        if exc.error_type and detail:
+            lines.append(f"error={exc.error_type}: {detail}")
+        elif exc.error_type:
+            lines.append(f"error={exc.error_type}")
+        elif detail:
+            lines.append(f"error={detail}")
+    if exc.response is not None:
+        response_text = _format_debug_value(exc.response)
+        if response_text and response_text != (exc.detail or ""):
+            lines.append(f"response={response_text}")
+    return lines
+
+
+def _format_debug_value(value: Any, limit: int = 500) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        text = json.dumps(value, ensure_ascii=False, default=str)
+    else:
+        text = str(value)
+    if len(text) > limit:
+        return f"{text[:limit]}...(truncated)"
+    return text
+
+
 def _print_error(message: str) -> None:
     print(message, file=sys.stderr)
-
-
 
 def _print_help(parser: argparse.ArgumentParser, topic: str | None) -> None:
     subparsers = getattr(parser, "_watcher_subparsers", {})
@@ -1037,7 +1082,7 @@ def _print_help(parser: argparse.ArgumentParser, topic: str | None) -> None:
         print("  watcher watchlists")
         print("  watcher watchlists --search 관심")
         print("  watcher items --watchlist 1")
-        print("  watcher items --watchlist 1 -w --interval 2")
+        print("  watcher items --watchlist 1 -w --interval 5")
         print("  watcher stocks --market US --limit 10")
         return
 

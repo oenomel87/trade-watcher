@@ -36,7 +36,9 @@ uv run python -m app.main
 - API 문서: http://localhost:9944/docs
 - 헬스 체크: http://localhost:9944/
 
-> `.env` 파일의 `WATCHER_ENGINE_PORT` 환경 변수로 포트를 변경할 수 있습니다.
+> `.env` 파일의 `WATCHER_ENGINE_PORT` 환경 변수로 포트를 변경할 수 있습니다.  
+> `WATCHER_KIS_MAX_CONCURRENCY`로 KIS 동시 호출 제한을 설정할 수 있습니다 (기본값: 5).  
+> `WATCHER_KIS_TIMEOUT_SEC`로 요청 타임아웃(초), `WATCHER_KIS_MAX_RETRIES`/`WATCHER_KIS_RETRY_BACKOFF_SEC`로 재시도 횟수/백오프를 조정할 수 있습니다.
 
 ## 📁 프로젝트 구조
 

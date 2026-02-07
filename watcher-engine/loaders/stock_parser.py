@@ -26,7 +26,8 @@ class StockParser:
     STANDARD_CODE_START = 9
     STANDARD_CODE_END = 21
     NAME_START = 21
-    NAME_END = 61
+    # KIS 명세: 이름 필드는 행 끝에서 228바이트를 뺀 위치까지
+    FIXED_SUFFIX_LEN = 228
 
     # 해외(미국) 종목 파일 탭 구분 필드 인덱스
     US_NCOD = 0
@@ -58,13 +59,15 @@ class StockParser:
         Returns:
             Stock 객체 또는 None (파싱 실패 시)
         """
-        if len(line) < self.NAME_END:
+        # KIS 명세: 이름 필드 끝 = len(line) - 228
+        name_end = len(line) - self.FIXED_SUFFIX_LEN
+        if name_end <= self.NAME_START:
             return None
 
         try:
             code = line[self.CODE_START : self.CODE_END].decode("utf-8").strip()
             standard_code = line[self.STANDARD_CODE_START : self.STANDARD_CODE_END].decode("utf-8").strip()
-            name = line[self.NAME_START : self.NAME_END].decode("utf-8").strip()
+            name = line[self.NAME_START : name_end].decode("utf-8").strip()
         except UnicodeDecodeError:
             return None
 
@@ -78,6 +81,7 @@ class StockParser:
             market=market,
             exchange=exchange,
         )
+
 
     def parse_us_line(self, line: bytes, market: str, exchange: str | None) -> Stock | None:
         """미국 종목 탭 구분 파일 한 줄 파싱."""
