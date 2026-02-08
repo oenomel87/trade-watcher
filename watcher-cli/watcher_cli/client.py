@@ -294,6 +294,69 @@ class EngineClient:
         )
         return payload
 
+    async def portfolio_buy(
+        self,
+        stock_code: str,
+        quantity: int,
+        price: float,
+        buy_date: str,
+        memo: str | None = None,
+    ) -> dict:
+        payload = await self._request(
+            "POST",
+            "/portfolio/buy",
+            json={
+                "stock_code": stock_code,
+                "quantity": quantity,
+                "price": price,
+                "buy_date": buy_date,
+                "memo": memo,
+            },
+        )
+        return payload
+
+    async def portfolio_sell(
+        self,
+        stock_code: str,
+        quantity: int,
+        price: float,
+        sell_date: str,
+        memo: str | None = None,
+    ) -> dict:
+        payload = await self._request(
+            "POST",
+            "/portfolio/sell",
+            json={
+                "stock_code": stock_code,
+                "quantity": quantity,
+                "price": price,
+                "sell_date": sell_date,
+                "memo": memo,
+            },
+        )
+        return payload
+
+    async def get_holdings(self) -> list[dict]:
+        payload = await self._request("GET", "/portfolio/holdings")
+        return payload.get("data", [])
+
+    async def get_pnl_summary(self) -> dict:
+        payload = await self._request("GET", "/portfolio/pnl")
+        return payload.get("data", {})
+
+    async def get_trades(
+        self,
+        stock_code: str | None = None,
+        trade_type: str | None = None,
+    ) -> list[dict]:
+        params: dict[str, str] = {}
+        if stock_code:
+            params["stock_code"] = stock_code
+        if trade_type:
+            params["trade_type"] = trade_type
+        payload = await self._request("GET", "/portfolio/trades", params=params)
+        return payload.get("data", [])
+
     async def _request(
         self,
         method: str,

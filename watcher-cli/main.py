@@ -57,6 +57,20 @@ def main() -> None:
             asyncio.run(_run_overseas(args, config))
         elif args.command == "add":
             asyncio.run(_run_add_wizard(args, config))
+        elif args.command == "trade":
+            if args.trade_command == "buy":
+                asyncio.run(_run_trade_buy(args, config))
+            elif args.trade_command == "sell":
+                asyncio.run(_run_trade_sell(args, config))
+            else:
+                print("지원하지 않는 거래 명령입니다.")
+                raise SystemExit(2)
+        elif args.command == "holdings":
+            asyncio.run(_run_holdings(args, config))
+        elif args.command == "pnl":
+            asyncio.run(_run_pnl(args, config))
+        elif args.command == "trades":
+            asyncio.run(_run_trades(args, config))
         else:
             print("지원하지 않는 명령입니다.")
             raise SystemExit(2)
@@ -75,7 +89,11 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     help_parser = subparsers.add_parser("help", help="도움말 출력")
-    help_parser.add_argument("topic", nargs="?", help="명령어 이름 (watchlists/items)")
+    help_parser.add_argument(
+        "topic",
+        nargs="?",
+        help="명령어 이름 (watchlists/items/trade/holdings/pnl/trades)",
+    )
 
     watchlists = subparsers.add_parser("watchlists", help="관심목록 목록 조회")
     watchlists.add_argument("-s", "--search", help="관심목록 이름 검색어")
@@ -144,6 +162,35 @@ def _build_parser() -> argparse.ArgumentParser:
 
     add_wizard = subparsers.add_parser("add", help="대화형 종목 추가 마법사")
 
+    trade = subparsers.add_parser("trade", help="포트폴리오 매수/매도 기록")
+    trade_sub = trade.add_subparsers(dest="trade_command", required=True)
+
+    trade_buy = trade_sub.add_parser("buy", help="매수 기록")
+    trade_buy.add_argument("--stock-code", required=True, help="종목 코드")
+    trade_buy.add_argument("--quantity", required=True, type=int, help="수량")
+    trade_buy.add_argument("--price", required=True, type=float, help="단가")
+    trade_buy.add_argument("--buy-date", required=True, help="매수일 (YYYY-MM-DD)")
+    trade_buy.add_argument("--memo", help="메모(선택)")
+
+    trade_sell = trade_sub.add_parser("sell", help="매도 기록")
+    trade_sell.add_argument("--stock-code", required=True, help="종목 코드")
+    trade_sell.add_argument("--quantity", required=True, type=int, help="수량")
+    trade_sell.add_argument("--price", required=True, type=float, help="단가")
+    trade_sell.add_argument("--sell-date", required=True, help="매도일 (YYYY-MM-DD)")
+    trade_sell.add_argument("--memo", help="메모(선택)")
+
+    holdings = subparsers.add_parser("holdings", help="현재 보유 종목 조회")
+
+    pnl = subparsers.add_parser("pnl", help="포트폴리오 손익 요약 조회")
+
+    trades = subparsers.add_parser("trades", help="포트폴리오 거래 내역 조회")
+    trades.add_argument("--stock-code", help="종목 코드 필터")
+    trades.add_argument(
+        "--trade-type",
+        choices=["BUY", "SELL", "buy", "sell"],
+        help="거래 유형 필터",
+    )
+
     parser._watcher_subparsers = {  # type: ignore[attr-defined]
         "help": help_parser,
         "watchlists": watchlists,
@@ -153,6 +200,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "monitor": monitor,
         "overseas": overseas,
         "add": add_wizard,
+        "trade": trade,
+        "holdings": holdings,
+        "pnl": pnl,
+        "trades": trades,
     }
 
     return parser
@@ -328,6 +379,89 @@ async def _run_item_delete(args: argparse.Namespace, config: CliConfig) -> None:
             return
 
         print(f"종목 삭제 완료: item_id={item_id}")
+
+
+async def _run_trade_buy(args: argparse.Namespace, config: CliConfig) -> None:
+    async with EngineClient(config.engine_url) as client:
+        try:
+            payload = await client.portfolio_buy(
+                stock_code=args.stock_code,
+                quantity=args.quantity,
+                price=args.price,
+                buy_date=args.buy_date,
+                memo=args.memo,
+            )
+        except EngineAPIError as exc:
+            _print_engine_error("매수 기록에 실패했습니다", exc)
+            return
+
+        data = payload.get("data", payload)
+        print(
+            "매수 기록 완료: "
+            f"{data.get('stock_code', args.stock_code)} "
+            f"{_format_number(data.get('quantity', args.quantity))}주 "
+            f"@ {_format_price(data.get('buy_price', args.price))}"
+        )
+        if data.get("buy_date"):
+            print(f"매수일: {data['buy_date']}")
+        if data.get("id") is not None:
+            print(f"lot_id: {data['id']}")
+
+
+async def _run_trade_sell(args: argparse.Namespace, config: CliConfig) -> None:
+    async with EngineClient(config.engine_url) as client:
+        try:
+            payload = await client.portfolio_sell(
+                stock_code=args.stock_code,
+                quantity=args.quantity,
+                price=args.price,
+                sell_date=args.sell_date,
+                memo=args.memo,
+            )
+        except EngineAPIError as exc:
+            _print_engine_error("매도 기록에 실패했습니다", exc)
+            return
+
+        data = payload.get("data", payload)
+        print(
+            "매도 기록 완료: "
+            f"{args.stock_code} {_format_number(args.quantity)}주 "
+            f"@ {_format_price(args.price)}"
+        )
+        if data.get("trade_id") is not None:
+            print(f"trade_id: {data['trade_id']}")
+        print(f"실현손익: {_format_signed_price(data.get('realized_pnl'))}")
+
+
+async def _run_holdings(args: argparse.Namespace, config: CliConfig) -> None:
+    async with EngineClient(config.engine_url) as client:
+        try:
+            holdings = await client.get_holdings()
+        except EngineAPIError as exc:
+            _print_engine_error("보유 종목 조회에 실패했습니다", exc)
+            return
+    _print_holdings_table(holdings)
+
+
+async def _run_pnl(args: argparse.Namespace, config: CliConfig) -> None:
+    async with EngineClient(config.engine_url) as client:
+        try:
+            summary = await client.get_pnl_summary()
+        except EngineAPIError as exc:
+            _print_engine_error("손익 요약 조회에 실패했습니다", exc)
+            return
+    _print_pnl_summary(summary)
+
+
+async def _run_trades(args: argparse.Namespace, config: CliConfig) -> None:
+    trade_type = args.trade_type.upper() if args.trade_type else None
+    async with EngineClient(config.engine_url) as client:
+        try:
+            trades = await client.get_trades(stock_code=args.stock_code, trade_type=trade_type)
+        except EngineAPIError as exc:
+            _print_engine_error("거래 내역 조회에 실패했습니다", exc)
+            return
+    _print_trades_table(trades)
 
 
 async def _run_stock_search(args: argparse.Namespace, config: CliConfig) -> None:
@@ -883,6 +1017,56 @@ def _print_overseas_periodic(result: dict) -> None:
         print("조회된 데이터가 없습니다.")
 
 
+def _print_holdings_table(holdings: list[dict]) -> None:
+    if not holdings:
+        print("현재 보유 종목이 없습니다.")
+        return
+
+    rows = [
+        [
+            str(item.get("stock_code", "")),
+            _format_number(item.get("total_quantity")),
+            _format_price(item.get("avg_buy_price")),
+            _format_number(item.get("lots_count")),
+        ]
+        for item in holdings
+    ]
+    _print_table(["코드", "보유수량", "평균매수가", "Lot수"], rows)
+
+
+def _print_pnl_summary(summary: dict[str, Any]) -> None:
+    print("포트폴리오 손익 요약")
+    print("-" * 40)
+    print(f"실현손익: {_format_signed_price(summary.get('realized_pnl'))}")
+    print(f"미실현손익: {_format_signed_price(summary.get('unrealized_pnl'))}")
+    print(f"총손익: {_format_signed_price(summary.get('total_pnl'))}")
+
+
+def _print_trades_table(trades: list[dict]) -> None:
+    if not trades:
+        print("거래 내역이 없습니다.")
+        return
+
+    rows = []
+    for trade in trades:
+        rows.append(
+            [
+                str(trade.get("id", "")),
+                str(trade.get("stock_code", "")),
+                str(trade.get("trade_type", "")),
+                _format_number(trade.get("quantity")),
+                _format_price(trade.get("price")),
+                str(trade.get("trade_date", "")),
+                _format_signed_price(trade.get("realized_pnl")),
+                str(trade.get("memo") or ""),
+            ]
+        )
+    _print_table(
+        ["ID", "코드", "유형", "수량", "단가", "거래일", "실현손익", "메모"],
+        rows,
+    )
+
+
 def _format_price(value: str | None) -> str:
     """가격 포맷 (소수점 유지)."""
     if value is None or value == "":
@@ -1084,6 +1268,10 @@ def _print_help(parser: argparse.ArgumentParser, topic: str | None) -> None:
         print("  watcher items --watchlist 1")
         print("  watcher items --watchlist 1 -w --interval 5")
         print("  watcher stocks --market US --limit 10")
+        print("  watcher trade buy --stock-code 005930 --quantity 10 --price 70000 --buy-date 2026-02-08")
+        print("  watcher holdings")
+        print("  watcher pnl")
+        print("  watcher trades --trade-type SELL")
         return
 
     subparser = subparsers.get(topic)
