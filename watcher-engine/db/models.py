@@ -43,3 +43,35 @@ class StockPricePeriodic:
     prdy_vrss_sign: str | None
     prdy_vrss: int | None
     revl_issu_reas: str | None
+
+
+@dataclass
+class HoldingLot:
+    """매수 단위 (FIFO 계산용)."""
+
+    id: int | None = None
+    stock_code: str = ""  # 종목 코드
+    quantity: int = 0  # 매수 수량
+    buy_price: float = 0.0  # 매수 단가
+    buy_date: str = ""  # 매수일 (YYYY-MM-DD)
+    remaining_qty: int = 0  # 남은 수량 (일부 매도 후)
+    is_closed: bool = False  # 전량 매도 여부
+    memo: str | None = None  # 메모 (선택)
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+@dataclass
+class Trade:
+    """거래 내역 (매수/매도)."""
+
+    id: int | None = None
+    stock_code: str = ""  # 종목 코드
+    trade_type: str = ""  # BUY 또는 SELL
+    quantity: int = 0  # 거래 수량
+    price: float = 0.0  # 거래 단가
+    trade_date: str = ""  # 거래일 (YYYY-MM-DD)
+    realized_pnl: float | None = None  # 실현 손익 (매도 시에만 계산)
+    matched_lots: str | None = None  # JSON 문자열: 어떤 Lot과 매칭되었는지
+    memo: str | None = None  # 메모 (선택)
+    created_at: str | None = None

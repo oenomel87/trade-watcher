@@ -1,5 +1,12 @@
 # DB Module
 from .database import Database
-from .models import Stock, StockListing, StockPricePeriodic
+from .models import HoldingLot, Stock, StockListing, StockPricePeriodic, Trade
 
-__all__ = ["Database", "Stock", "StockListing", "StockPricePeriodic"]
+__all__ = [
+    "Database",
+    "Stock",
+    "StockListing",
+    "StockPricePeriodic",
+    "HoldingLot",
+    "Trade",
+]

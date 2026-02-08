@@ -3,7 +3,7 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
-from .models import Stock, StockListing, StockPricePeriodic
+from .models import HoldingLot, Stock, StockListing, StockPricePeriodic, Trade
 
 
 class Database:
@@ -135,6 +135,42 @@ class Database:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_stock_price_current_code "
             "ON stock_price_current(stock_code)"
+        )
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS holding_lots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stock_code TEXT NOT NULL,
+                quantity INTEGER NOT NULL,
+                buy_price REAL NOT NULL,
+                buy_date TEXT NOT NULL,
+                remaining_qty INTEGER NOT NULL,
+                is_closed INTEGER NOT NULL DEFAULT 0,
+                memo TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_holding_lots_code_closed "
+            "ON holding_lots(stock_code, is_closed)"
+        )
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS trades (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stock_code TEXT NOT NULL,
+                trade_type TEXT NOT NULL,
+                quantity INTEGER NOT NULL,
+                price REAL NOT NULL,
+                trade_date TEXT NOT NULL,
+                realized_pnl REAL,
+                matched_lots TEXT,
+                memo TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_trades_code_type_date "
+            "ON trades(stock_code, trade_type, trade_date)"
         )
         conn.execute("""
             CREATE TABLE IF NOT EXISTS watchlists (
@@ -341,6 +377,169 @@ class Database:
         )
         conn.commit()
         return len(prices)
+
+    def insert_holding_lot(self, lot: HoldingLot) -> int:
+        """매수 Lot 삽입."""
+        conn = self.connect()
+        cursor = conn.execute(
+            """
+            INSERT INTO holding_lots (
+                stock_code,
+                quantity,
+                buy_price,
+                buy_date,
+                remaining_qty,
+                is_closed,
+                memo
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                lot.stock_code,
+                lot.quantity,
+                lot.buy_price,
+                lot.buy_date,
+                lot.remaining_qty,
+                1 if lot.is_closed else 0,
+                lot.memo,
+            ),
+        )
+        conn.commit()
+        return int(cursor.lastrowid)
+
+    def update_lot_remaining_qty(self, lot_id: int, remaining_qty: int, is_closed: bool) -> None:
+        """Lot의 남은 수량/종결 상태 갱신."""
+        conn = self.connect()
+        conn.execute(
+            """
+            UPDATE holding_lots
+            SET remaining_qty = ?, is_closed = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (remaining_qty, 1 if is_closed else 0, lot_id),
+        )
+        conn.commit()
+
+    def get_open_lots(self, stock_code: str) -> list[HoldingLot]:
+        """미종결 Lot 조회 (FIFO 순서)."""
+        conn = self.connect()
+        cursor = conn.execute(
+            """
+            SELECT
+                id,
+                stock_code,
+                quantity,
+                buy_price,
+                buy_date,
+                remaining_qty,
+                is_closed,
+                memo,
+                created_at,
+                updated_at
+            FROM holding_lots
+            WHERE stock_code = ? AND is_closed = 0
+            ORDER BY buy_date ASC, id ASC
+            """,
+            (stock_code,),
+        )
+        rows = cursor.fetchall()
+        return [
+            HoldingLot(
+                id=row["id"],
+                stock_code=row["stock_code"],
+                quantity=row["quantity"],
+                buy_price=row["buy_price"],
+                buy_date=row["buy_date"],
+                remaining_qty=row["remaining_qty"],
+                is_closed=bool(row["is_closed"]),
+                memo=row["memo"],
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+            )
+            for row in rows
+        ]
+
+    def insert_trade(self, trade: Trade) -> int:
+        """거래 내역 삽입."""
+        conn = self.connect()
+        cursor = conn.execute(
+            """
+            INSERT INTO trades (
+                stock_code,
+                trade_type,
+                quantity,
+                price,
+                trade_date,
+                realized_pnl,
+                matched_lots,
+                memo
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                trade.stock_code,
+                trade.trade_type,
+                trade.quantity,
+                trade.price,
+                trade.trade_date,
+                trade.realized_pnl,
+                trade.matched_lots,
+                trade.memo,
+            ),
+        )
+        conn.commit()
+        return int(cursor.lastrowid)
+
+    def get_trades(
+        self, stock_code: str | None = None, trade_type: str | None = None
+    ) -> list[Trade]:
+        """거래 내역 조회."""
+        conn = self.connect()
+
+        conditions = []
+        params = []
+        if stock_code is not None:
+            conditions.append("stock_code = ?")
+            params.append(stock_code)
+        if trade_type is not None:
+            conditions.append("trade_type = ?")
+            params.append(trade_type)
+
+        query = """
+            SELECT
+                id,
+                stock_code,
+                trade_type,
+                quantity,
+                price,
+                trade_date,
+                realized_pnl,
+                matched_lots,
+                memo,
+                created_at
+            FROM trades
+        """
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY trade_date ASC, id ASC"
+
+        cursor = conn.execute(query, params)
+        rows = cursor.fetchall()
+        return [
+            Trade(
+                id=row["id"],
+                stock_code=row["stock_code"],
+                trade_type=row["trade_type"],
+                quantity=row["quantity"],
+                price=row["price"],
+                trade_date=row["trade_date"],
+                realized_pnl=row["realized_pnl"],
+                matched_lots=row["matched_lots"],
+                memo=row["memo"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]
 
     def get_periodic_prices(
         self,
