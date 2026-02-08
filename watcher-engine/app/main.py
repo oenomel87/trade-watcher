@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routers import portfolio
 from app.routers import stocks
 from app.routers import watchlists
 from db import Database
@@ -45,6 +46,7 @@ app.add_middleware(
 )
 
 # 라우터 등록
+app.include_router(portfolio.router, prefix="/portfolio", tags=["Portfolio"])
 app.include_router(stocks.router, prefix="/stocks", tags=["Stocks"])
 app.include_router(watchlists.router, prefix="/watchlists", tags=["WatchLists"])
 
