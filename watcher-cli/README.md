@@ -1,6 +1,6 @@
 # Watcher CLI
 
-관심목록을 조회하고 종목 정보를 출력하는 CLI입니다.
+한국투자증권 OpenAPI를 직접 호출해서 관심 종목 단일 목록을 관리하고, 터미널에서 시세를 주기적으로 보여주는 CLI입니다.
 
 ## Setup
 
@@ -9,158 +9,63 @@ cd watcher-cli
 uv sync
 ```
 
+필수 환경 변수:
+
+```bash
+export KIS_APP_KEY=your_app_key
+export KIS_APP_SECRET=your_app_secret
+export KIS_IS_REAL=true
+```
+
+또는 `.env.sample`을 복사해서 `watcher-cli/.env`를 만들 수 있습니다.
+
+```bash
+cd watcher-cli
+cp .env.sample .env
+```
+
+CLI는 현재 작업 디렉터리의 `.env`를 먼저 읽고, 없으면 `watcher-cli/.env`를 읽습니다.
+
 ## Run
 
 ```bash
-uv run python main.py watchlists
-```
-
-## Alias Setup (Recommended)
-
-매번 긴 명령어를 입력하는 대신 단축어(Alias)를 설정하면 편리합니다. `~/.zshrc` (또는 `~/.bash_profile`)에 다음 내용을 추가하세요:
-
-```bash
-# trade-watcher alias
-alias tw='uv --directory /Users/yspark/workspace/toy/trade-watcher/watcher-cli run python main.py'
-```
-
-이후 `source ~/.zshrc`를 수행하면 어디서든 `tw` 명령어로 실행할 수 있습니다:
-
-```bash
-tw watchlists
-tw prices 005930 -w
-```
-
-엔진이 별도로 실행 중이어야 합니다:
-
-```bash
-cd watcher-engine
-uv run python -m app.main
-```
-
-## Usage
-
-```bash
-# 관심목록 목록
-uv run python main.py watchlists
-
-# 도움말
-uv run python main.py help
-uv run python main.py help watchlists
-uv run python main.py help items
+cd watcher-cli
 uv run python main.py --help
-
-# 관심목록 검색
-uv run python main.py watchlists --search 관심
-
-# 종목 검색
-uv run python main.py stocks --query 삼성
-uv run python main.py stocks --query AAPL --market US
-
-# 종목 목록 (시장/거래소 필터)
-uv run python main.py stocks --market US --limit 10
-uv run python main.py stocks --market KOSPI --exchange KRX --limit 10
-
-# KRX/NXT 통합 시세 조회
-uv run python main.py prices 005930
-uv run python main.py prices 005930 -w --interval 2
-
-# 관심목록 생성/삭제
-uv run python main.py watchlists create --name "장기투자" --description "장기 보유"
-uv run python main.py watchlists delete --watchlist "장기투자"
-
-# 관심목록 종목 조회 (ID)
-uv run python main.py items --watchlist 1
-
-# 관심목록 종목 조회 (이름)
-uv run python main.py items --watchlist "장기투자"
-
-# 실시간 갱신 (-w)
-uv run python main.py items --watchlist 1 -w --interval 2
-
-# NXT 시세 함께 조회 (--include-nxt)
-uv run python main.py items --watchlist 1 --include-nxt
-
-# 종목 추가/삭제
-uv run python main.py items add --watchlist 1 --stock-code 005930 --memo "삼성전자"
-uv run python main.py items delete --watchlist 1 --item-id 3
-uv run python main.py items delete --watchlist 1 --stock-code 005930
 ```
 
-## Interactive Commands (대화형 명령)
-
-CLI는 대화형 모드도 지원합니다.
-
-### Monitor (모니터링 대시보드)
+## Commands
 
 ```bash
-# 대화형 모니터링 시작 (기본 관심목록)
+# 저장된 목록 보기
+uv run python main.py list
+
+# 종목 추가
+uv run python main.py add 삼성전자
+uv run python main.py add 005930
+uv run python main.py add
+
+# 종목 제거
+uv run python main.py remove 삼성전자
+uv run python main.py remove 005930
+uv run python main.py remove
+
+# 5초 주기 모니터
 uv run python main.py monitor
 
-# 특정 관심목록으로 시작
-uv run python main.py monitor --watchlist 1
-
-# NXT 시세 포함
-uv run python main.py monitor --include-nxt
+# 주기 변경
+uv run python main.py monitor --interval 2
 ```
 
-**단축키:**
-| 키 | 동작 |
-|----|------|
-| `q` | 종료 |
-| `n` | NXT 시세 표시 토글 |
-| `r` | 즉시 새로고침 |
-| `1`-`9` | 해당 번호의 관심목록으로 전환 |
+## Behavior
 
-### Add Wizard (종목 추가 마법사)
+- 관심 종목은 단일 목록 1개만 지원합니다.
+- 저장 파일은 `~/.config/trade-watcher/watchlist.json` 입니다.
+- 한국 종목은 `monitor`에서 항상 `KRX`와 `NXT`를 함께 조회합니다.
+- 화면에는 `최적가`, `KRX`, `NXT`, `변동률`이 표시됩니다.
+- 미국 종목은 단일 현재가만 표시되며 `KRX`, `NXT` 컬럼은 `-`로 표시됩니다.
 
-```bash
-# 단계별 종목 추가 시작
-uv run python main.py add
-```
+## Notes
 
-마법사가 안내하는 단계:
-1. 관심목록 선택 (번호 입력)
-2. 종목 검색 및 선택
-3. 메모 입력 (선택사항)
-4. 확인 후 추가
-
-참고:
-- 폴더는 CLI에서 다루지 않으며, 종목 추가 시 기본 폴더로 저장됩니다.
-- 현재가 캐시가 없으면 실시간 조회를 시도합니다. (`--no-refresh-missing`으로 비활성화 가능)
-
-
-## Configuration
-
-Config search order:
-
-1) `watcher-cli/cli_config.json`
-2) `watcher-cli/tui_config.json` (호환용)
-3) `$XDG_CONFIG_HOME/trade-watcher/cli_config.json`
-4) `$XDG_CONFIG_HOME/trade-watcher/tui_config.json` (호환용)
-5) `~/.config/trade-watcher/cli_config.json`
-6) `~/.config/trade-watcher/tui_config.json` (호환용)
-
-Environment variables override the config file:
-
-- `WATCHER_ENGINE_URL`
-- `WATCHER_CLI_REFRESH_SEC` (또는 `WATCHER_TUI_REFRESH_SEC`)
-- `WATCHER_CLI_SUMMARY_CACHE_SEC` (또는 `WATCHER_TUI_SUMMARY_CACHE_SEC`)
-- `WATCHER_CLI_MARKET` (또는 `WATCHER_TUI_MARKET`)
-- `WATCHER_CLI_DEFAULT_WATCHLIST_ID` (또는 `WATCHER_TUI_DEFAULT_WATCHLIST_ID`)
-
-Example config:
-
-```json
-{
-  "engine_url": "http://localhost:9944",
-  "refresh_interval_sec": 5,
-  "summary_cache_age_sec": 60,
-  "market": "J",
-  "default_watchlist_id": null
-}
-```
-
-참고:
-- `stocks` 명령의 `--market` 값은 `KOSPI/KOSDAQ/US` 중 하나를 사용합니다.
-- 설정값 `market`은 시세 조회용 코드 `J/NX/UN`이며, 종목 목록 필터와는 별개입니다.
+- `add` 는 로컬 종목 마스터(`../docs/stocks`)를 읽어 코드/이름 검색을 지원합니다.
+- 한국 종목은 거래소별 중복을 합쳐 하나의 논리 종목으로 저장합니다.
+- 별도 `watcher-engine` 서버는 필요하지 않습니다.

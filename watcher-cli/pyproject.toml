@@ -1,10 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "watcher-cli"
 version = "0.1.0"
-description = "Watcher engine CLI for watchlists"
+description = "Single-list stock monitor CLI for KIS OpenAPI"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "httpx",
-    "pydantic",
+    "python-dotenv>=1.2.1",
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.24.0",
 ]
+
+[project.scripts]
+watcher = "watcher_cli.app:main"

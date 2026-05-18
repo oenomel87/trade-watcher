@@ -1,114 +1,61 @@
 # Trade Watcher
 
-한국투자증권 API를 활용한 실시간 주식 모니터링 및 관심목록 관리 시스템입니다. 
+한국투자증권 OpenAPI를 직접 호출해서 관심 종목 단일 목록을 관리하고, 터미널에서 주기적으로 시세를 보여주는 개인용 CLI 도구입니다.
 
-본 프로젝트는 주식 시세를 자동으로 수집하고 관리하는 **Backend Engine**과, 이를 편리하게 조회하고 제어할 수 있는 **CLI 기반 인터페이스**로 구성되어 있습니다.
+## Quick Start
 
----
+사전 요구사항:
 
-## 🏗 프로젝트 구조 (Architecture)
-
-프로젝트는 크게 두 개의 독립적인 패키지로 구성되어 있습니다.
-
-### 1. [Watcher Engine](./watcher-engine) (Backend)
-FastAPI 기반의 REST API 서버입니다.
-- **주요 기능**: KIS(한국투자증권) API 연동, 주식 시세 캐싱(SQLite), 관심목록 및 폴더 관리.
-- **핵심 기술**: Python 3.13, FastAPI, SQLite, uv.
-- **구성**:
-    - `app/`: API 라우터 및 비즈니스 로직 (Service Layer).
-    - `db/`: 데이터베이스 모델 및 연결 관리.
-    - `external/`: KIS API 클라이언트 및 인증 모듈.
-    - `loaders/`: 종목 정보 파싱 및 DB 로드 유틸리티.
-
-### 2. [Watcher CLI](./watcher-cli) (Frontend)
-kubectl 스타일의 직관적인 명령줄 도구입니다.
-- **주요 기능**: 관심목록 조회/생성/삭제, 종목 검색, 실시간 시세 대시보드 (`-w` 모드).
-- **핵심 기술**: Python 3.13, argparse, httpx, pydantic.
-
----
-
-## 🚀 시작하기 (Quick Start)
-
-모든 패키지는 [uv](https://docs.astral.sh/uv/) 패키지 관리자를 사용하여 관리됩니다.
-
-### 1. 사전 요구사항
 - Python 3.13 이상
-- uv 설치
+- `uv`
+- 한국투자증권 OpenAPI 자격 증명
 
-### 2. Engine 설정 및 실행
-```bash
-cd watcher-engine
+설치 및 실행:
 
-# 의존성 설치
-uv sync
-
-# 환경 변수 설정 (.env 파일 작성)
-# KIS_APP_KEY, KIS_APP_SECRET 설정 필요
-cp .env.sample .env
-
-# 서버 실행 (기본: http://localhost:9944)
-uv run python -m app.main
-```
-
-### 3. CLI 설정 및 사용
 ```bash
 cd watcher-cli
-
-# 의존성 설치
 uv sync
 
-# 관심목록 조회
-uv run main.py watchlists
+export KIS_APP_KEY=your_app_key
+export KIS_APP_SECRET=your_app_secret
+export KIS_IS_REAL=false
 
-# 특정 관심목록 실시간 모니터링 (2초 간격)
-uv run main.py items --watchlist 1 -w --interval 2
+uv run python main.py --help
 ```
 
----
+## Main Commands
 
-## 💻 주요 기능 및 사용법 (Key Features)
-
-### 1. 관심목록 (Watchlists) 관리
 ```bash
-# 목록 조회
-watcher watchlists
+# 저장된 목록 보기
+uv run python main.py list
 
-# 이름으로 검색
-watcher watchlists --search "보유"
+# 종목 추가/삭제
+uv run python main.py add 삼성전자
+uv run python main.py remove 삼성전자
 
-# 새 관심목록 생성
-watcher watchlists create --name "배당주" --description "고배당 종목 모음"
+# 대화형 추가/삭제
+uv run python main.py add
+uv run python main.py remove
+
+# 5초 주기 모니터
+uv run python main.py monitor
+uv run python main.py monitor --interval 2
 ```
 
-### 2. 종목 및 시세 조회
-```bash
-# 종목 검색
-watcher stocks -q "삼성전자"
+## Behavior
 
-# 관심목록 내 종목 상세 조회 (캐시 기반)
-watcher items --watchlist 1
+- 관심 종목은 단일 목록 1개만 지원합니다.
+- 목록 저장 위치는 `~/.config/trade-watcher/watchlist.json` 입니다.
+- 한국 종목은 `KRX`와 `NXT`를 함께 조회하고, 화면에는 `최적가`, `KRX`, `NXT`, `변동률`이 표시됩니다.
+- 미국 종목은 단일 현재가만 표시됩니다.
+- 별도 `watcher-engine` 서버는 필요하지 않습니다.
 
-# 실시간 시세 업데이트 모드
-watcher items --watchlist 1 -w
-```
+## Repository Layout
 
----
+- `watcher-cli/`: 현재 사용되는 CLI 구현
+- `watcher-engine/`: 이전 구조 기반 코드. 현재 단순 CLI 런타임에는 필수 아님
+- `docs/`: 종목 마스터 파일과 설계 문서
 
-## 📁 디렉토리 설명
+## License
 
-- `watcher-engine/`: 백엔드 엔진 소스 코드 및 데이터 로더.
-- `watcher-cli/`: CLI 도구 소스 코드.
-- `docs/`: 디자인 설계 문서, API 명세, 참고 데이터.
-- `data/`: 로컬 SQLite 데이터베이스 파일 (git 제외).
-
----
-
-## 🔐 보안 및 설정
-
-- **KIS API 인증**: 한국투자증권에서 발급받은 AppKey와 Secret을 `watcher-engine/.env` 파일에 기록해야 합니다.
-- **데이터 저장**: 주식 마스터 데이터와 캐시된 시세는 `watcher-engine/data/stocks.db`에 SQLite 형식으로 저장됩니다.
-
----
-
-## 📝 라이선스
 MIT License

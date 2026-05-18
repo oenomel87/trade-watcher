@@ -1,6 +1,5 @@
 """Watcher CLI package."""
 
-from watcher_cli.config import CliConfig, load_config
-from watcher_cli.client import EngineClient, EngineAPIError
+from watcher_cli.app import build_parser, main
 
-__all__ = ["CliConfig", "load_config", "EngineClient", "EngineAPIError"]
+__all__ = ["build_parser", "main"]
